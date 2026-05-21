@@ -1,0 +1,9 @@
+# Educational profile: run with --spring.profiles.active=flyway after creating an empty Oracle schema.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+

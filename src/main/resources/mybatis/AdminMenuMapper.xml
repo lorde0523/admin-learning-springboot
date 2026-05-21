@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.admin.menu.mapper.AdminMenuMapper">
+    <select id="nextId" resultType="long" useCache="false" flushCache="true">SELECT ADMIN_MENU_SEQ.NEXTVAL FROM DUAL</select>
+
+    <insert id="insert">
+        INSERT INTO ADMIN_MENU (
+            MENU_ID, MENU_CODE, MENU_NAME, PARENT_MENU_ID, SORT_ORDER, ENABLED, CREATED_BY, CREATED_AT, UPDATED_BY, UPDATED_AT
+        ) VALUES (
+            #{id}, #{request.menuCode}, #{request.menuName}, #{request.parentMenuId}, #{request.sortOrder}, #{request.enabled},
+            #{auditor}, CURRENT_TIMESTAMP, #{auditor}, CURRENT_TIMESTAMP
+        )
+    </insert>
+
+    <insert id="bulkInsert" databaseId="oracle">
+        INSERT ALL
+        <foreach collection="menus" item="menu">
+            INTO ADMIN_MENU (
+                MENU_ID, MENU_CODE, MENU_NAME, PARENT_MENU_ID, SORT_ORDER, ENABLED, CREATED_BY, CREATED_AT, UPDATED_BY, UPDATED_AT
+            ) VALUES (
+                #{menu.id},
+                #{menu.request.menuCode},
+                #{menu.request.menuName},
+                #{menu.request.parentMenuId},
+                #{menu.request.sortOrder},
+                #{menu.request.enabled},
+                #{auditor},
+                CURRENT_TIMESTAMP,
+                #{auditor},
+                CURRENT_TIMESTAMP
+            )
+        </foreach>
+        SELECT 1 FROM DUAL
+    </insert>
+
+    <insert id="bulkInsert" databaseId="h2">
+        INSERT INTO ADMIN_MENU (
+            MENU_ID, MENU_CODE, MENU_NAME, PARENT_MENU_ID, SORT_ORDER, ENABLED, CREATED_BY, CREATED_AT, UPDATED_BY, UPDATED_AT
+        ) VALUES
+        <foreach collection="menus" item="menu" separator=",">
+            (
+                #{menu.id},
+                #{menu.request.menuCode},
+                #{menu.request.menuName},
+                #{menu.request.parentMenuId},
+                #{menu.request.sortOrder},
+                #{menu.request.enabled},
+                #{auditor},
+                CURRENT_TIMESTAMP,
+                #{auditor},
+                CURRENT_TIMESTAMP
+            )
+        </foreach>
+    </insert>
+
+    <sql id="menuColumns">
+        MENU_ID AS id,
+        MENU_CODE AS menuCode,
+        MENU_NAME AS menuName,
+        PARENT_MENU_ID AS parentMenuId,
+        SORT_ORDER AS sortOrder,
+        ENABLED AS enabled,
+        CREATED_BY AS createdBy,
+        CREATED_AT AS createdAt
+    </sql>
+
+    <select id="findById" resultType="com.example.admin.menu.mapper.AdminMenuMapper$MenuRow">
+        SELECT <include refid="menuColumns"/> FROM ADMIN_MENU WHERE MENU_ID = #{id}
+    </select>
+
+    <select id="search" resultType="com.example.admin.menu.mapper.AdminMenuMapper$MenuRow">
+        SELECT <include refid="menuColumns"/>
+          FROM ADMIN_MENU
+         <where>
+             <if test="nameKeyword != null and nameKeyword != ''">
+                 UPPER(MENU_NAME) LIKE '%' || UPPER(#{nameKeyword}) || '%'
+             </if>
+         </where>
+         ORDER BY SORT_ORDER, MENU_ID
+    </select>
+
+    <select id="children" resultType="com.example.admin.menu.mapper.AdminMenuMapper$MenuRow">
+        SELECT <include refid="menuColumns"/>
+          FROM ADMIN_MENU
+         WHERE PARENT_MENU_ID = #{parentMenuId}
+         ORDER BY SORT_ORDER, MENU_ID
+    </select>
+
+    <select id="findByRoleId" resultType="com.example.admin.menu.mapper.AdminMenuMapper$MenuRow">
+        SELECT menu.MENU_ID AS id,
+               menu.MENU_CODE AS menuCode,
+               menu.MENU_NAME AS menuName,
+               menu.PARENT_MENU_ID AS parentMenuId,
+               menu.SORT_ORDER AS sortOrder,
+               menu.ENABLED AS enabled,
+               menu.CREATED_BY AS createdBy,
+               menu.CREATED_AT AS createdAt
+          FROM ADMIN_MENU menu
+          JOIN ADMIN_ROLE_MENU role_menu ON role_menu.MENU_ID = menu.MENU_ID
+         WHERE role_menu.ROLE_ID = #{roleId}
+         ORDER BY menu.SORT_ORDER, menu.MENU_ID
+    </select>
+
+    <update id="update">
+        UPDATE ADMIN_MENU
+           SET MENU_NAME = #{request.menuName},
+               PARENT_MENU_ID = #{request.parentMenuId},
+               SORT_ORDER = #{request.sortOrder},
+               ENABLED = #{request.enabled},
+               UPDATED_BY = #{auditor},
+               UPDATED_AT = CURRENT_TIMESTAMP
+         WHERE MENU_ID = #{id}
+    </update>
+
+    <delete id="delete">DELETE FROM ADMIN_MENU WHERE MENU_ID = #{id}</delete>
+</mapper>

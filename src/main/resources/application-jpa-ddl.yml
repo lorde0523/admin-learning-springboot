@@ -1,0 +1,9 @@
+# Educational profile: use only on a throwaway schema while comparing Hibernate DDL with the SQL scripts.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create
+    show-sql: true
+  flyway:
+    enabled: false
+
