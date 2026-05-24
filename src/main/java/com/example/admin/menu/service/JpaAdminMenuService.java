@@ -5,6 +5,9 @@ import com.example.admin.menu.dto.MenuDtos;
 import com.example.admin.menu.entity.AdminMenu;
 import com.example.admin.menu.repository.AdminMenuRepository;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -44,7 +47,7 @@ public class JpaAdminMenuService {
     @Transactional
     public MenuDtos.MenuResponse update(Long id, MenuDtos.MenuRequest request) {
         AdminMenu menu = menu(id);
-        menu.update(request.menuName(), request.parentMenuId(), request.sortOrder(), request.enabled());
+        menu.update(request.getMenuName(), request.getParentMenuId(), request.getSortOrder(), request.getEnabled());
         return MenuDtos.MenuResponse.from(menu);
     }
 
@@ -53,13 +56,53 @@ public class JpaAdminMenuService {
         menuRepository.delete(menu(id));
     }
 
+    @Transactional
+    public MenuDtos.GridSaveResponse saveGrid(MenuDtos.MenuGridSaveRequest request) {
+        List<Long> deletedIds = request.getDeletedIds() == null ? List.of() : request.getDeletedIds();
+        List<MenuDtos.MenuRequest> createdRows =
+                request.getCreatedRows() == null ? List.of() : request.getCreatedRows();
+        List<MenuDtos.MenuGridRow> updatedRows =
+                request.getUpdatedRows() == null ? List.of() : request.getUpdatedRows();
+
+        if (!deletedIds.isEmpty()) {
+            menuRepository.deleteAllByIdInBatch(deletedIds);
+        }
+
+        List<AdminMenu> createdMenus = createdRows.stream()
+                .map(this::entity)
+                .toList();
+        menuRepository.saveAll(createdMenus);
+
+        Map<Long, MenuDtos.MenuGridRow> updateRowsById = updatedRows.stream()
+                .collect(Collectors.toMap(MenuDtos.MenuGridRow::getId, Function.identity()));
+
+        List<AdminMenu> updateTargets = updateRowsById.isEmpty()
+                ? List.of()
+                : menuRepository.findAllById(updateRowsById.keySet());
+
+        if (updateTargets.size() != updateRowsById.size()) {
+            throw new ResourceNotFoundException("One or more menus do not exist.");
+        }
+
+        for (AdminMenu menu : updateTargets) {
+            MenuDtos.MenuGridRow row = updateRowsById.get(menu.getId());
+            menu.update(row.getMenuName(), row.getParentMenuId(), row.getSortOrder(), row.getEnabled());
+        }
+
+        return MenuDtos.GridSaveResponse.builder()
+                .createdCount(createdMenus.size())
+                .updatedCount(updateTargets.size())
+                .deletedCount(deletedIds.size())
+                .build();
+    }
+
     private AdminMenu entity(MenuDtos.MenuRequest request) {
         return AdminMenu.create(
-                request.menuCode(),
-                request.menuName(),
-                request.parentMenuId(),
-                request.sortOrder(),
-                request.enabled());
+                request.getMenuCode(),
+                request.getMenuName(),
+                request.getParentMenuId(),
+                request.getSortOrder(),
+                request.getEnabled());
     }
 
     private AdminMenu menu(Long id) {

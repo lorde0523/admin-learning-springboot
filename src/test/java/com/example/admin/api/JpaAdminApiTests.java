@@ -80,4 +80,74 @@ class JpaAdminApiTests {
                 .andExpect(jsonPath("$.details").doesNotExist())
                 .andExpect(jsonPath("$.occurredAt").doesNotExist());
     }
+
+    @Test
+    void savesMenuGridChangesThroughJpa() throws Exception {
+        String existing = mockMvc.perform(post("/api/jpa/menus")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "menuCode": "GRID_OLD",
+                                  "menuName": "Old menu",
+                                  "parentMenuId": null,
+                                  "sortOrder": 1,
+                                  "enabled": true
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Long existingId = objectMapper.readTree(existing).get("id").asLong();
+
+        String deleted = mockMvc.perform(post("/api/jpa/menus")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "menuCode": "GRID_DELETE",
+                                  "menuName": "Delete menu",
+                                  "parentMenuId": null,
+                                  "sortOrder": 2,
+                                  "enabled": true
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Long deletedId = objectMapper.readTree(deleted).get("id").asLong();
+
+        mockMvc.perform(post("/api/jpa/menus/grid-save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "createdRows": [
+                                    {
+                                      "menuCode": "GRID_NEW",
+                                      "menuName": "New menu",
+                                      "parentMenuId": null,
+                                      "sortOrder": 3,
+                                      "enabled": true
+                                    }
+                                  ],
+                                  "updatedRows": [
+                                    {
+                                      "id": %d,
+                                      "menuCode": "GRID_OLD",
+                                      "menuName": "Updated menu",
+                                      "parentMenuId": null,
+                                      "sortOrder": 4,
+                                      "enabled": false
+                                    }
+                                  ],
+                                  "deletedIds": [%d]
+                                }
+                                """.formatted(existingId, deletedId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(1))
+                .andExpect(jsonPath("$.updatedCount").value(1))
+                .andExpect(jsonPath("$.deletedCount").value(1));
+    }
 }

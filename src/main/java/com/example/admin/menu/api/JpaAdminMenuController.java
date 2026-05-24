@@ -29,7 +29,12 @@ public class JpaAdminMenuController {
     @PostMapping
     public ResponseEntity<MenuDtos.MenuResponse> create(@Valid @RequestBody MenuDtos.MenuRequest request) {
         MenuDtos.MenuResponse response = menuService.create(request);
-        return ResponseEntity.created(URI.create("/api/jpa/menus/" + response.id())).body(response);
+        return ResponseEntity.created(URI.create("/api/jpa/menus/" + response.getId())).body(response);
+    }
+
+    @PostMapping("/grid-save")
+    public MenuDtos.GridSaveResponse saveGrid(@Valid @RequestBody MenuDtos.MenuGridSaveRequest request) {
+        return menuService.saveGrid(request);
     }
 
     @GetMapping("/{id}")
