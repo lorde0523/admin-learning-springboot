@@ -181,6 +181,31 @@ class JpaAdminApiTests {
     }
 
     @Test
+    void rejectsMissingUpdatedMenuIdsThroughJpaGridSave() throws Exception {
+        mockMvc.perform(post("/api/jpa/menus/grid-save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "createdRows": [],
+                                  "updatedRows": [
+                                    {
+                                      "id": 999999,
+                                      "menuCode": "GRID_MISSING",
+                                      "menuName": "Missing menu",
+                                      "parentMenuId": null,
+                                      "sortOrder": 1,
+                                      "enabled": true
+                                    }
+                                  ],
+                                  "deletedIds": []
+                                }
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code", is("NOT_FOUND")))
+                .andExpect(jsonPath("$.message", is("One or more menus do not exist.")));
+    }
+
+    @Test
     void rejectsDuplicateUpdatedMenuIdsThroughJpaGridSave() throws Exception {
         String existing = mockMvc.perform(post("/api/jpa/menus")
                         .contentType(MediaType.APPLICATION_JSON)
