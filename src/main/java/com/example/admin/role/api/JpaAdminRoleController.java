@@ -30,7 +30,7 @@ public class JpaAdminRoleController {
     @PostMapping
     public ResponseEntity<RoleDtos.RoleResponse> create(@Valid @RequestBody RoleDtos.RoleRequest request) {
         RoleDtos.RoleResponse response = roleService.create(request);
-        return ResponseEntity.created(URI.create("/api/jpa/roles/" + response.id())).body(response);
+        return ResponseEntity.created(URI.create("/api/jpa/roles/" + response.getId())).body(response);
     }
 
     @GetMapping("/{id}")

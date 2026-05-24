@@ -67,6 +67,51 @@ class JpaAdminApiTests {
     }
 
     @Test
+    void assignsMenusToRoleThroughJpaTrack() throws Exception {
+        String roleResponse = mockMvc.perform(post("/api/jpa/roles")
+                        .header("X-User-Id", "jpa-api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"roleCode":"ROLE_MENU","roleName":"Role Menu","enabled":true}
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        long roleId = objectMapper.readTree(roleResponse).get("id").asLong();
+
+        String menuResponse = mockMvc.perform(post("/api/jpa/menus")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "menuCode": "ROLE_MENU_LIST",
+                                  "menuName": "Role menu list",
+                                  "parentMenuId": null,
+                                  "sortOrder": 1,
+                                  "enabled": true
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        long menuId = objectMapper.readTree(menuResponse).get("id").asLong();
+
+        mockMvc.perform(put("/api/jpa/roles/{roleId}/menus", roleId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"menuIds\":[" + menuId + "]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.roleId", is((int) roleId)))
+                .andExpect(jsonPath("$.menus", hasSize(1)))
+                .andExpect(jsonPath("$.menus[0].menuCode", is("ROLE_MENU_LIST")));
+
+        mockMvc.perform(get("/api/jpa/roles/{roleId}/menus", roleId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].menuCode", is("ROLE_MENU_LIST")));
+    }
+
+    @Test
     void returnsCommonValidationError() throws Exception {
         mockMvc.perform(post("/api/jpa/users")
                         .contentType(MediaType.APPLICATION_JSON)
