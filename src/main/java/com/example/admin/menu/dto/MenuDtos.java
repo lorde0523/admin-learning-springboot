@@ -65,6 +65,7 @@ public final class MenuDtos {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class MenuGridRow extends MenuRequest {
+        @NotNull
         private Long id;
 
         public Long id() {
@@ -150,9 +151,9 @@ public final class MenuDtos {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class MenuGridSaveRequest {
-        private List<@Valid MenuRequest> createdRows = new ArrayList<>();
-        private List<@Valid MenuGridRow> updatedRows = new ArrayList<>();
-        private List<Long> deletedIds = new ArrayList<>();
+        private List<@NotNull @Valid MenuRequest> createdRows = new ArrayList<>();
+        private List<@NotNull @Valid MenuGridRow> updatedRows = new ArrayList<>();
+        private List<@NotNull Long> deletedIds = new ArrayList<>();
     }
 
     @Getter

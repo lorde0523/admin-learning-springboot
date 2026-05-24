@@ -149,5 +149,83 @@ class JpaAdminApiTests {
                 .andExpect(jsonPath("$.createdCount").value(1))
                 .andExpect(jsonPath("$.updatedCount").value(1))
                 .andExpect(jsonPath("$.deletedCount").value(1));
+
+        mockMvc.perform(get("/api/jpa/menus/{id}", existingId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.menuName").value("Updated menu"))
+                .andExpect(jsonPath("$.sortOrder").value(4))
+                .andExpect(jsonPath("$.enabled").value(false));
+
+        mockMvc.perform(get("/api/jpa/menus/{id}", deletedId))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/jpa/menus"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.menuCode == 'GRID_NEW')]", hasSize(1)));
+    }
+
+    @Test
+    void rejectsMissingDeletedMenuIdsThroughJpaGridSave() throws Exception {
+        mockMvc.perform(post("/api/jpa/menus/grid-save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "createdRows": [],
+                                  "updatedRows": [],
+                                  "deletedIds": [999999]
+                                }
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code", is("NOT_FOUND")))
+                .andExpect(jsonPath("$.message", is("One or more menus do not exist.")));
+    }
+
+    @Test
+    void rejectsDuplicateUpdatedMenuIdsThroughJpaGridSave() throws Exception {
+        String existing = mockMvc.perform(post("/api/jpa/menus")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "menuCode": "GRID_DUP",
+                                  "menuName": "Duplicate menu",
+                                  "parentMenuId": null,
+                                  "sortOrder": 1,
+                                  "enabled": true
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Long existingId = objectMapper.readTree(existing).get("id").asLong();
+
+        mockMvc.perform(post("/api/jpa/menus/grid-save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "createdRows": [],
+                                  "updatedRows": [
+                                    {
+                                      "id": %d,
+                                      "menuCode": "GRID_DUP",
+                                      "menuName": "First duplicate",
+                                      "parentMenuId": null,
+                                      "sortOrder": 2,
+                                      "enabled": true
+                                    },
+                                    {
+                                      "id": %d,
+                                      "menuCode": "GRID_DUP",
+                                      "menuName": "Second duplicate",
+                                      "parentMenuId": null,
+                                      "sortOrder": 3,
+                                      "enabled": false
+                                    }
+                                  ],
+                                  "deletedIds": []
+                                }
+                                """.formatted(existingId, existingId)))
+                .andExpect(status().isBadRequest());
     }
 }
