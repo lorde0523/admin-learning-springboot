@@ -251,6 +251,79 @@ class JpaAdminApiTests {
                                   "deletedIds": []
                                 }
                                 """.formatted(existingId, existingId)))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("BAD_REQUEST")))
+                .andExpect(jsonPath("$.message", is("updatedRows.id must not contain duplicate ids.")))
+                .andExpect(jsonPath("$.timestamp").exists());
+    }
+
+    @Test
+    void rejectsNullUpdatedMenuIdsThroughJpaGridSave() throws Exception {
+        mockMvc.perform(post("/api/jpa/menus/grid-save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "createdRows": [],
+                                  "updatedRows": [
+                                    {
+                                      "id": null,
+                                      "menuCode": "GRID_NULL",
+                                      "menuName": "Null id",
+                                      "parentMenuId": null,
+                                      "sortOrder": 1,
+                                      "enabled": true
+                                    }
+                                  ],
+                                  "deletedIds": []
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("VALIDATION_ERROR")))
+                .andExpect(jsonPath("$.message", is("Request validation failed.")))
+                .andExpect(jsonPath("$.timestamp").exists());
+    }
+
+    @Test
+    void rejectsDeleteAndUpdateMenuIdConflictsThroughJpaGridSave() throws Exception {
+        String existing = mockMvc.perform(post("/api/jpa/menus")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "menuCode": "GRID_CONFLICT",
+                                  "menuName": "Conflict menu",
+                                  "parentMenuId": null,
+                                  "sortOrder": 1,
+                                  "enabled": true
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Long existingId = objectMapper.readTree(existing).get("id").asLong();
+
+        mockMvc.perform(post("/api/jpa/menus/grid-save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "createdRows": [],
+                                  "updatedRows": [
+                                    {
+                                      "id": %d,
+                                      "menuCode": "GRID_CONFLICT",
+                                      "menuName": "Conflicting update",
+                                      "parentMenuId": null,
+                                      "sortOrder": 2,
+                                      "enabled": false
+                                    }
+                                  ],
+                                  "deletedIds": [%d]
+                                }
+                                """.formatted(existingId, existingId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("BAD_REQUEST")))
+                .andExpect(jsonPath("$.message", is("deletedIds and updatedRows.id must not overlap.")))
+                .andExpect(jsonPath("$.timestamp").exists());
     }
 }

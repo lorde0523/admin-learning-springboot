@@ -69,6 +69,7 @@ public class JpaAdminMenuService {
 
         List<Long> deletedIds = uniqueIds(requestedDeletedIds, "deletedIds");
         Map<Long, MenuDtos.MenuGridRow> updateRowsById = updateRowsById(updatedRows);
+        rejectDeleteUpdateConflicts(deletedIds, updateRowsById);
 
         if (!deletedIds.isEmpty()) {
             List<AdminMenu> deleteTargets = menuRepository.findAllById(deletedIds);
@@ -127,6 +128,14 @@ public class JpaAdminMenuService {
             }
         }
         return rowsById;
+    }
+
+    private void rejectDeleteUpdateConflicts(List<Long> deletedIds, Map<Long, MenuDtos.MenuGridRow> updateRowsById) {
+        for (Long deletedId : deletedIds) {
+            if (updateRowsById.containsKey(deletedId)) {
+                throw badRequest("deletedIds and updatedRows.id must not overlap.");
+            }
+        }
     }
 
     private ResponseStatusException badRequest(String message) {

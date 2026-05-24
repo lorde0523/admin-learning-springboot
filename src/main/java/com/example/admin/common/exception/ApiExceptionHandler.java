@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -20,6 +21,19 @@ public class ApiExceptionHandler {
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException exception) {
         return ResponseEntity.badRequest()
                 .body(ErrorResponse.of("VALIDATION_ERROR", "Request validation failed."));
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ErrorResponse> handleResponseStatus(ResponseStatusException exception) {
+        String message = exception.getReason() == null ? exception.getMessage() : exception.getReason();
+        return ResponseEntity.status(exception.getStatusCode())
+                .body(ErrorResponse.of(code(exception), message));
+    }
+
+    private String code(ResponseStatusException exception) {
+        return exception.getStatusCode().value() == HttpStatus.BAD_REQUEST.value()
+                ? "BAD_REQUEST"
+                : "HTTP_" + exception.getStatusCode().value();
     }
 }
 
