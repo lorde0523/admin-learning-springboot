@@ -26,7 +26,7 @@ public class JpaAdminUserService {
     @Transactional
     public UserDtos.UserResponse create(UserDtos.UserRequest request) {
         return UserDtos.UserResponse.from(userRepository.saveAndFlush(
-                AdminUser.create(request.loginId(), request.name(), request.enabled())));
+                AdminUser.create(request.getLoginId(), request.getName(), request.getEnabled())));
     }
 
     public UserDtos.UserResponse find(Long id) {
@@ -43,7 +43,7 @@ public class JpaAdminUserService {
     @Transactional
     public UserDtos.UserResponse update(Long id, UserDtos.UserRequest request) {
         AdminUser user = userWithRoles(id);
-        user.update(request.name(), request.enabled());
+        user.update(request.getName(), request.getEnabled());
         return UserDtos.UserResponse.from(user);
     }
 
@@ -55,8 +55,8 @@ public class JpaAdminUserService {
     @Transactional
     public UserDtos.UserResponse assignRoles(Long id, UserDtos.RoleAssignmentRequest request) {
         AdminUser user = userWithRoles(id);
-        var roles = new LinkedHashSet<>(roleRepository.findAllById(request.roleIds()));
-        if (roles.size() != request.roleIds().size()) {
+        var roles = new LinkedHashSet<>(roleRepository.findAllById(request.getRoleIds()));
+        if (roles.size() != request.getRoleIds().size()) {
             throw new ResourceNotFoundException("One or more roles do not exist.");
         }
         user.assignRoles(roles);
