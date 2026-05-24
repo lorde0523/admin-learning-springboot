@@ -35,6 +35,15 @@ class AdminUserRepositoryTests {
     }
 
     @Test
+    void treatsKeywordWildcardAsLikePattern() {
+        userRepository.save(AdminUser.create("mint.admin", "Mint Admin", true));
+
+        var users = userRepository.searchByLoginIdIgnoreCase("%");
+
+        assertThat(users).extracting(AdminUser::getLoginId).contains("mint.admin");
+    }
+
+    @Test
     void loadsAssignedRolesAndAuditColumns() {
         var request = new MockHttpServletRequest();
         request.addHeader("X-User-Id", "repository-test");

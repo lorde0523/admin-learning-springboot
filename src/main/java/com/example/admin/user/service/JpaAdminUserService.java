@@ -7,6 +7,7 @@ import com.example.admin.user.entity.AdminUser;
 import com.example.admin.user.repository.AdminUserRepository;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -35,7 +36,9 @@ public class JpaAdminUserService {
 
     public List<UserDtos.UserResponse> search(String loginKeyword) {
         List<AdminUser> users = StringUtils.hasText(loginKeyword)
-                ? userRepository.searchByLoginIdIgnoreCase(loginKeyword)
+                ? userRepository.findAll().stream()
+                        .filter(user -> matchesLoginKeyword(user, loginKeyword))
+                        .toList()
                 : userRepository.findAll();
         return users.stream().map(UserDtos.UserResponse::from).toList();
     }
@@ -66,5 +69,25 @@ public class JpaAdminUserService {
     private AdminUser userWithRoles(Long id) {
         return userRepository.findWithRolesById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User " + id + " was not found."));
+    }
+
+    private boolean matchesLoginKeyword(AdminUser user, String loginKeyword) {
+        String regex = likePattern("%" + loginKeyword + "%");
+        return Pattern.compile(regex, Pattern.CASE_INSENSITIVE).matcher(user.getLoginId()).matches();
+    }
+
+    private String likePattern(String pattern) {
+        StringBuilder regex = new StringBuilder();
+        for (int index = 0; index < pattern.length(); index++) {
+            char character = pattern.charAt(index);
+            if (character == '%') {
+                regex.append(".*");
+            } else if (character == '_') {
+                regex.append('.');
+            } else {
+                regex.append(Pattern.quote(String.valueOf(character)));
+            }
+        }
+        return regex.toString();
     }
 }
