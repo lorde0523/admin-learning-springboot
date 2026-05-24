@@ -74,6 +74,10 @@ class JpaAdminApiTests {
                                 {"loginId":"","name":"","enabled":true}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code", is("VALIDATION_ERROR")));
+                .andExpect(jsonPath("$.code", is("VALIDATION_ERROR")))
+                .andExpect(jsonPath("$.message", is("Request validation failed.")))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.details").doesNotExist())
+                .andExpect(jsonPath("$.occurredAt").doesNotExist());
     }
 }
