@@ -19,15 +19,32 @@ public class AdminUserSearchRepositoryImpl implements AdminUserSearchRepository 
         CriteriaBuilder builder = entityManager.getCriteriaBuilder();
         CriteriaQuery<AdminUser> query = builder.createQuery(AdminUser.class);
         Root<AdminUser> user = query.from(AdminUser.class);
-        String normalizedKeyword = keyword.toUpperCase(Locale.ROOT);
+        String pattern = ".*" + likeKeywordToRegex(keyword.toUpperCase(Locale.ROOT)) + ".*";
 
         query.select(user);
-        if (!"%".equals(keyword)) {
-            query.where(builder.greaterThan(
-                    builder.locate(builder.upper(user.get("loginId")), normalizedKeyword),
-                    0));
-        }
+        query.where(builder.equal(
+                builder.function(
+                        "regexp_like",
+                        Boolean.class,
+                        builder.upper(user.get("loginId")),
+                        builder.literal(pattern)),
+                true));
 
         return entityManager.createQuery(query).getResultList();
+    }
+
+    private String likeKeywordToRegex(String keyword) {
+        StringBuilder regex = new StringBuilder();
+        for (int index = 0; index < keyword.length(); index++) {
+            char character = keyword.charAt(index);
+            if (character == '%') {
+                regex.append(".*");
+            } else if (character == '_') {
+                regex.append('.');
+            } else {
+                regex.append("\\Q").append(character).append("\\E");
+            }
+        }
+        return regex.toString();
     }
 }

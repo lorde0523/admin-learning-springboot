@@ -52,6 +52,20 @@ class AdminUserRepositoryTests {
     }
 
     @Test
+    void treatsEmbeddedKeywordWildcardsAsLikePattern() {
+        userRepository.save(AdminUser.create("mint.admin", "Mint Admin", true));
+        userRepository.save(AdminUser.create("guest.user", "Guest User", true));
+        entityManager.flush();
+        entityManager.clear();
+
+        var percentUsers = userRepository.searchByLoginIdIgnoreCase("M%");
+        var underscoreUsers = userRepository.searchByLoginIdIgnoreCase("m_nt");
+
+        assertThat(percentUsers).extracting(AdminUser::getLoginId).contains("mint.admin");
+        assertThat(underscoreUsers).extracting(AdminUser::getLoginId).contains("mint.admin");
+    }
+
+    @Test
     void searchesLoginIdAfterRoleAssignment() {
         var role = roleRepository.save(AdminRole.create("ADMIN", "Administrator", true));
         var user = AdminUser.create("mint.admin", "Mint Admin", true);
