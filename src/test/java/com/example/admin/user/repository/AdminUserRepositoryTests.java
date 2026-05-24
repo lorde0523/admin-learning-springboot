@@ -10,6 +10,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -25,9 +26,14 @@ class AdminUserRepositoryTests {
     @Autowired
     private AdminRoleRepository roleRepository;
 
+    @Autowired
+    private TestEntityManager entityManager;
+
     @Test
     void searchesLoginIdWithUpperFunction() {
         userRepository.save(AdminUser.create("mint.admin", "Mint Admin", true));
+        entityManager.flush();
+        entityManager.clear();
 
         var users = userRepository.searchByLoginIdIgnoreCase("MINT");
 
@@ -37,10 +43,26 @@ class AdminUserRepositoryTests {
     @Test
     void treatsKeywordWildcardAsLikePattern() {
         userRepository.save(AdminUser.create("mint.admin", "Mint Admin", true));
+        entityManager.flush();
+        entityManager.clear();
 
         var users = userRepository.searchByLoginIdIgnoreCase("%");
 
         assertThat(users).extracting(AdminUser::getLoginId).contains("mint.admin");
+    }
+
+    @Test
+    void searchesLoginIdAfterRoleAssignment() {
+        var role = roleRepository.save(AdminRole.create("ADMIN", "Administrator", true));
+        var user = AdminUser.create("mint.admin", "Mint Admin", true);
+        user.assignRoles(Set.of(role));
+        userRepository.save(user);
+        entityManager.flush();
+        entityManager.clear();
+
+        var users = userRepository.searchByLoginIdIgnoreCase("MINT");
+
+        assertThat(users).extracting(AdminUser::getLoginId).containsExactly("mint.admin");
     }
 
     @Test
