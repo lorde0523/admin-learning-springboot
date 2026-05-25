@@ -8,43 +8,68 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 public final class UserDtos {
 
     private UserDtos() {
     }
 
-    public record UserRequest(
-            @NotBlank String loginId,
-            @NotBlank String name,
-            @NotNull Boolean enabled) {
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class UserRequest {
+        @NotBlank
+        private String loginId;
+
+        @NotBlank
+        private String name;
+
+        @NotNull
+        private Boolean enabled;
     }
 
-    public record RoleAssignmentRequest(@NotEmpty Set<Long> roleIds) {
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RoleAssignmentRequest {
+        @NotEmpty
+        private Set<Long> roleIds;
     }
 
-    public record UserResponse(
-            Long id,
-            String loginId,
-            String name,
-            boolean enabled,
-            String createdBy,
-            LocalDateTime createdAt,
-            String updatedBy,
-            LocalDateTime updatedAt,
-            List<RoleDtos.RoleSummary> roles) {
+    @Getter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class UserResponse {
+        private Long id;
+        private String loginId;
+        private String name;
+        private boolean enabled;
+        private String createdBy;
+        private LocalDateTime createdAt;
+        private String updatedBy;
+        private LocalDateTime updatedAt;
+        private List<RoleDtos.RoleSummary> roles;
 
         public static UserResponse from(AdminUser user) {
-            return new UserResponse(
-                    user.getId(),
-                    user.getLoginId(),
-                    user.getName(),
-                    user.isEnabled(),
-                    user.getCreatedBy(),
-                    user.getCreatedAt(),
-                    user.getUpdatedBy(),
-                    user.getUpdatedAt(),
-                    user.getRoles().stream().map(RoleDtos.RoleSummary::from).toList());
+            return UserResponse.builder()
+                    .id(user.getId())
+                    .loginId(user.getLoginId())
+                    .name(user.getName())
+                    .enabled(user.isEnabled())
+                    .createdBy(user.getCreatedBy())
+                    .createdAt(user.getCreatedAt())
+                    .updatedBy(user.getUpdatedBy())
+                    .updatedAt(user.getUpdatedAt())
+                    .roles(user.getRoles().stream().map(RoleDtos.RoleSummary::from).toList())
+                    .build();
         }
     }
 }

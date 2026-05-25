@@ -6,36 +6,86 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.util.Set;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 public final class RoleDtos {
 
     private RoleDtos() {
     }
 
-    public record RoleRequest(
-            @NotBlank String roleCode,
-            @NotBlank String roleName,
-            @NotNull Boolean enabled) {
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RoleRequest {
+        @NotBlank
+        private String roleCode;
+
+        @NotBlank
+        private String roleName;
+
+        @NotNull
+        private Boolean enabled;
     }
 
-    public record RoleSummary(Long id, String roleCode, String roleName) {
+    @Getter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RoleSummary {
+        private Long id;
+        private String roleCode;
+        private String roleName;
 
         public static RoleSummary from(AdminRole role) {
-            return new RoleSummary(role.getId(), role.getRoleCode(), role.getRoleName());
+            return RoleSummary.builder()
+                    .id(role.getId())
+                    .roleCode(role.getRoleCode())
+                    .roleName(role.getRoleName())
+                    .build();
         }
     }
 
-    public record RoleResponse(Long id, String roleCode, String roleName, boolean enabled) {
+    @Getter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RoleResponse {
+        private Long id;
+        private String roleCode;
+        private String roleName;
+        private boolean enabled;
 
         public static RoleResponse from(AdminRole role) {
-            return new RoleResponse(role.getId(), role.getRoleCode(), role.getRoleName(), role.isEnabled());
+            return RoleResponse.builder()
+                    .id(role.getId())
+                    .roleCode(role.getRoleCode())
+                    .roleName(role.getRoleName())
+                    .enabled(role.isEnabled())
+                    .build();
         }
     }
 
-    public record MenuAssignmentRequest(@NotEmpty Set<Long> menuIds) {
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MenuAssignmentRequest {
+        @NotEmpty
+        private Set<Long> menuIds;
     }
 
-    public record RoleMenusResponse(Long roleId, Set<MenuDtos.MenuResponse> menus) {
+    @Getter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RoleMenusResponse {
+        private Long roleId;
+        private Set<MenuDtos.MenuResponse> menus;
     }
 }
 

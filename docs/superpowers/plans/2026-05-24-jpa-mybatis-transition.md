@@ -21,6 +21,19 @@
 - MyBatis XML은 최종 구조에서 조회 SQL만 포함한다.
 - QueryDSL은 사용하지 않는다.
 
+## 현재 진행 상태
+
+- [x] 작업 1: 공통 오류 DTO를 Lombok class로 전환했다.
+- [x] 작업 2: 메뉴 ag-Grid 저장 API를 JPA 기반으로 추가했다.
+- [x] 작업 3: 사용자 DTO를 Lombok class로 전환했다.
+- [x] 작업 4: 역할 DTO를 Lombok class로 전환했다.
+- [x] 작업 5: 사용자 단순 검색을 QueryDSL 없이 JPA 경로로 정리했다.
+- [x] 작업 6: QueryDSL 없는 `Specification` 예시를 추가했다.
+- [x] 작업 7: MyBatis 쓰기 Service와 Controller를 제거했다.
+- [x] 작업 8: MyBatis mapper와 XML을 조회 전용으로 정리했다.
+- [x] 작업 9: README를 현재 JPA/MyBatis 경계와 Lombok 기준에 맞게 정리했다.
+- [x] 작업 10: 최종 검색, 전체 테스트, diff 검토를 수행했다.
+
 ## 대상 파일 구조
 
 - 수정: `src/main/java/com/example/admin/user/dto/UserDtos.java`

@@ -1,16 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.example.admin.user.mapper.AdminUserMapper">
-    <select id="nextId" resultType="long" useCache="false" flushCache="true">SELECT ADMIN_USER_SEQ.NEXTVAL FROM DUAL</select>
-
-    <insert id="insert">
-        INSERT INTO ADMIN_USER (
-            USER_ID, LOGIN_ID, USER_NAME, ENABLED, CREATED_BY, CREATED_AT, UPDATED_BY, UPDATED_AT
-        ) VALUES (
-            #{id}, #{request.loginId}, #{request.name}, #{request.enabled}, #{auditor}, CURRENT_TIMESTAMP, #{auditor}, CURRENT_TIMESTAMP
-        )
-    </insert>
-
     <select id="findById" resultType="com.example.admin.user.mapper.AdminUserMapper$UserRow">
         SELECT USER_ID AS id,
                LOGIN_ID AS loginId,
@@ -41,23 +31,4 @@
          </where>
          ORDER BY USER_ID
     </select>
-
-    <update id="update">
-        UPDATE ADMIN_USER
-           SET USER_NAME = #{request.name},
-               ENABLED = #{request.enabled},
-               UPDATED_BY = #{auditor},
-               UPDATED_AT = CURRENT_TIMESTAMP
-         WHERE USER_ID = #{id}
-    </update>
-
-    <delete id="delete">DELETE FROM ADMIN_USER WHERE USER_ID = #{id}</delete>
-    <delete id="deleteRoles">DELETE FROM ADMIN_USER_ROLE WHERE USER_ID = #{userId}</delete>
-
-    <insert id="insertRoles">
-        INSERT INTO ADMIN_USER_ROLE (USER_ID, ROLE_ID)
-        <foreach collection="roleIds" item="roleId" separator=" UNION ALL ">
-            SELECT #{userId}, #{roleId} FROM DUAL
-        </foreach>
-    </insert>
 </mapper>

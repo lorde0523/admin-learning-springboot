@@ -29,7 +29,7 @@ public class JpaAdminUserController {
     @PostMapping
     public ResponseEntity<UserDtos.UserResponse> create(@Valid @RequestBody UserDtos.UserRequest request) {
         UserDtos.UserResponse response = userService.create(request);
-        return ResponseEntity.created(URI.create("/api/jpa/users/" + response.id())).body(response);
+        return ResponseEntity.created(URI.create("/api/jpa/users/" + response.getId())).body(response);
     }
 
     @GetMapping("/{id}")

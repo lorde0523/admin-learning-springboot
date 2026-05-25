@@ -27,7 +27,7 @@ public class JpaAdminRoleService {
     @Transactional
     public RoleDtos.RoleResponse create(RoleDtos.RoleRequest request) {
         return RoleDtos.RoleResponse.from(roleRepository.save(
-                AdminRole.create(request.roleCode(), request.roleName(), request.enabled())));
+                AdminRole.create(request.getRoleCode(), request.getRoleName(), request.getEnabled())));
     }
 
     public RoleDtos.RoleResponse find(Long id) {
@@ -41,7 +41,7 @@ public class JpaAdminRoleService {
     @Transactional
     public RoleDtos.RoleResponse update(Long id, RoleDtos.RoleRequest request) {
         AdminRole role = role(id);
-        role.update(request.roleName(), request.enabled());
+        role.update(request.getRoleName(), request.getEnabled());
         return RoleDtos.RoleResponse.from(role);
     }
 
@@ -53,8 +53,8 @@ public class JpaAdminRoleService {
     @Transactional
     public RoleDtos.RoleMenusResponse assignMenus(Long id, RoleDtos.MenuAssignmentRequest request) {
         AdminRole role = roleWithMenus(id);
-        var menus = new LinkedHashSet<>(menuRepository.findAllById(request.menuIds()));
-        if (menus.size() != request.menuIds().size()) {
+        var menus = new LinkedHashSet<>(menuRepository.findAllById(request.getMenuIds()));
+        if (menus.size() != request.getMenuIds().size()) {
             throw new ResourceNotFoundException("One or more menus do not exist.");
         }
         role.assignMenus(menus);
@@ -68,7 +68,10 @@ public class JpaAdminRoleService {
     }
 
     private RoleDtos.RoleMenusResponse menusResponse(AdminRole role) {
-        return new RoleDtos.RoleMenusResponse(role.getId(), menus(role.getId()));
+        return RoleDtos.RoleMenusResponse.builder()
+                .roleId(role.getId())
+                .menus(menus(role.getId()))
+                .build();
     }
 
     private AdminRole role(Long id) {

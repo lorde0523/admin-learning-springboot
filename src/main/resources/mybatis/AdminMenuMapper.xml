@@ -1,58 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.example.admin.menu.mapper.AdminMenuMapper">
-    <select id="nextId" resultType="long" useCache="false" flushCache="true">SELECT ADMIN_MENU_SEQ.NEXTVAL FROM DUAL</select>
-
-    <insert id="insert">
-        INSERT INTO ADMIN_MENU (
-            MENU_ID, MENU_CODE, MENU_NAME, PARENT_MENU_ID, SORT_ORDER, ENABLED, CREATED_BY, CREATED_AT, UPDATED_BY, UPDATED_AT
-        ) VALUES (
-            #{id}, #{request.menuCode}, #{request.menuName}, #{request.parentMenuId}, #{request.sortOrder}, #{request.enabled},
-            #{auditor}, CURRENT_TIMESTAMP, #{auditor}, CURRENT_TIMESTAMP
-        )
-    </insert>
-
-    <insert id="bulkInsert" databaseId="oracle">
-        INSERT ALL
-        <foreach collection="menus" item="menu">
-            INTO ADMIN_MENU (
-                MENU_ID, MENU_CODE, MENU_NAME, PARENT_MENU_ID, SORT_ORDER, ENABLED, CREATED_BY, CREATED_AT, UPDATED_BY, UPDATED_AT
-            ) VALUES (
-                #{menu.id},
-                #{menu.request.menuCode},
-                #{menu.request.menuName},
-                #{menu.request.parentMenuId},
-                #{menu.request.sortOrder},
-                #{menu.request.enabled},
-                #{auditor},
-                CURRENT_TIMESTAMP,
-                #{auditor},
-                CURRENT_TIMESTAMP
-            )
-        </foreach>
-        SELECT 1 FROM DUAL
-    </insert>
-
-    <insert id="bulkInsert" databaseId="h2">
-        INSERT INTO ADMIN_MENU (
-            MENU_ID, MENU_CODE, MENU_NAME, PARENT_MENU_ID, SORT_ORDER, ENABLED, CREATED_BY, CREATED_AT, UPDATED_BY, UPDATED_AT
-        ) VALUES
-        <foreach collection="menus" item="menu" separator=",">
-            (
-                #{menu.id},
-                #{menu.request.menuCode},
-                #{menu.request.menuName},
-                #{menu.request.parentMenuId},
-                #{menu.request.sortOrder},
-                #{menu.request.enabled},
-                #{auditor},
-                CURRENT_TIMESTAMP,
-                #{auditor},
-                CURRENT_TIMESTAMP
-            )
-        </foreach>
-    </insert>
-
     <sql id="menuColumns">
         MENU_ID AS id,
         MENU_CODE AS menuCode,
@@ -96,21 +44,8 @@
                menu.CREATED_BY AS createdBy,
                menu.CREATED_AT AS createdAt
           FROM ADMIN_MENU menu
-          JOIN ADMIN_ROLE_MENU role_menu ON role_menu.MENU_ID = menu.MENU_ID
+         JOIN ADMIN_ROLE_MENU role_menu ON role_menu.MENU_ID = menu.MENU_ID
          WHERE role_menu.ROLE_ID = #{roleId}
          ORDER BY menu.SORT_ORDER, menu.MENU_ID
     </select>
-
-    <update id="update">
-        UPDATE ADMIN_MENU
-           SET MENU_NAME = #{request.menuName},
-               PARENT_MENU_ID = #{request.parentMenuId},
-               SORT_ORDER = #{request.sortOrder},
-               ENABLED = #{request.enabled},
-               UPDATED_BY = #{auditor},
-               UPDATED_AT = CURRENT_TIMESTAMP
-         WHERE MENU_ID = #{id}
-    </update>
-
-    <delete id="delete">DELETE FROM ADMIN_MENU WHERE MENU_ID = #{id}</delete>
 </mapper>
