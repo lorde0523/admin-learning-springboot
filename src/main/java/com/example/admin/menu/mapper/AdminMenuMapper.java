@@ -3,17 +3,15 @@ package com.example.admin.menu.mapper;
 import com.example.admin.menu.dto.MenuDtos;
 import java.time.LocalDateTime;
 import java.util.List;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface AdminMenuMapper {
-
-    Long nextId();
-
-    int insert(@Param("id") Long id, @Param("request") MenuDtos.MenuRequest request, @Param("auditor") String auditor);
-
-    int bulkInsert(@Param("menus") List<MenuInsertRow> menus, @Param("auditor") String auditor);
 
     MenuRow findById(Long id);
 
@@ -23,22 +21,19 @@ public interface AdminMenuMapper {
 
     List<MenuRow> findByRoleId(Long roleId);
 
-    int update(@Param("id") Long id, @Param("request") MenuDtos.MenuRequest request, @Param("auditor") String auditor);
-
-    int delete(Long id);
-
-    record MenuInsertRow(Long id, MenuDtos.MenuRequest request) {
-    }
-
-    record MenuRow(
-            Long id,
-            String menuCode,
-            String menuName,
-            Long parentMenuId,
-            int sortOrder,
-            boolean enabled,
-            String createdBy,
-            LocalDateTime createdAt) {
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    class MenuRow {
+        private Long id;
+        private String menuCode;
+        private String menuName;
+        private Long parentMenuId;
+        private int sortOrder;
+        private boolean enabled;
+        private String createdBy;
+        private LocalDateTime createdAt;
 
         public MenuDtos.MenuResponse toResponse() {
             return new MenuDtos.MenuResponse(

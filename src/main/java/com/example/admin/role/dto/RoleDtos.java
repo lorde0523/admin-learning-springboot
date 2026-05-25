@@ -68,10 +68,6 @@ public final class RoleDtos {
                     .enabled(role.isEnabled())
                     .build();
         }
-
-        public Long id() {
-            return id;
-        }
     }
 
     @Getter
@@ -81,10 +77,6 @@ public final class RoleDtos {
     public static class MenuAssignmentRequest {
         @NotEmpty
         private Set<Long> menuIds;
-
-        public Set<Long> menuIds() {
-            return menuIds;
-        }
     }
 
     @Getter

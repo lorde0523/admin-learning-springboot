@@ -4,38 +4,33 @@ import com.example.admin.role.dto.RoleDtos;
 import com.example.admin.user.dto.UserDtos;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface AdminUserMapper {
 
-    Long nextId();
-
-    int insert(@Param("id") Long id, @Param("request") UserDtos.UserRequest request, @Param("auditor") String auditor);
-
     UserRow findById(Long id);
 
     List<UserRow> search(@Param("loginKeyword") String loginKeyword);
 
-    int update(@Param("id") Long id, @Param("request") UserDtos.UserRequest request, @Param("auditor") String auditor);
-
-    int delete(Long id);
-
-    int deleteRoles(Long userId);
-
-    int insertRoles(@Param("userId") Long userId, @Param("roleIds") Set<Long> roleIds);
-
-    record UserRow(
-            Long id,
-            String loginId,
-            String name,
-            boolean enabled,
-            String createdBy,
-            LocalDateTime createdAt,
-            String updatedBy,
-            LocalDateTime updatedAt) {
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    class UserRow {
+        private Long id;
+        private String loginId;
+        private String name;
+        private boolean enabled;
+        private String createdBy;
+        private LocalDateTime createdAt;
+        private String updatedBy;
+        private LocalDateTime updatedAt;
 
         public UserDtos.UserResponse toResponse(List<RoleDtos.RoleSummary> roles) {
             return new UserDtos.UserResponse(

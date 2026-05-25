@@ -41,10 +41,6 @@ public final class UserDtos {
     public static class RoleAssignmentRequest {
         @NotEmpty
         private Set<Long> roleIds;
-
-        public Set<Long> roleIds() {
-            return roleIds;
-        }
     }
 
     @Getter
@@ -74,10 +70,6 @@ public final class UserDtos {
                     .updatedAt(user.getUpdatedAt())
                     .roles(user.getRoles().stream().map(RoleDtos.RoleSummary::from).toList())
                     .build();
-        }
-
-        public Long id() {
-            return id;
         }
     }
 }

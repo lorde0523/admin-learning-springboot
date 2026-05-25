@@ -38,26 +38,6 @@ public final class MenuDtos {
 
         @NotNull
         private Boolean enabled;
-
-        public String menuCode() {
-            return menuCode;
-        }
-
-        public String menuName() {
-            return menuName;
-        }
-
-        public Long parentMenuId() {
-            return parentMenuId;
-        }
-
-        public int sortOrder() {
-            return sortOrder;
-        }
-
-        public Boolean enabled() {
-            return enabled;
-        }
     }
 
     @Getter
@@ -67,10 +47,6 @@ public final class MenuDtos {
     public static class MenuGridRow extends MenuRequest {
         @NotNull
         private Long id;
-
-        public Long id() {
-            return id;
-        }
     }
 
     @Getter
@@ -99,38 +75,6 @@ public final class MenuDtos {
                     .createdAt(menu.getCreatedAt())
                     .build();
         }
-
-        public Long id() {
-            return id;
-        }
-
-        public String menuCode() {
-            return menuCode;
-        }
-
-        public String menuName() {
-            return menuName;
-        }
-
-        public Long parentMenuId() {
-            return parentMenuId;
-        }
-
-        public int sortOrder() {
-            return sortOrder;
-        }
-
-        public boolean enabled() {
-            return enabled;
-        }
-
-        public String createdBy() {
-            return createdBy;
-        }
-
-        public LocalDateTime createdAt() {
-            return createdAt;
-        }
     }
 
     @Getter
@@ -140,10 +84,6 @@ public final class MenuDtos {
     public static class MenuBulkRequest {
         @NotEmpty
         private List<@Valid MenuRequest> menus = new ArrayList<>();
-
-        public List<MenuRequest> menus() {
-            return menus;
-        }
     }
 
     @Getter
@@ -171,9 +111,5 @@ public final class MenuDtos {
     @AllArgsConstructor
     public static class BulkInsertResponse {
         private int insertedCount;
-
-        public int insertedCount() {
-            return insertedCount;
-        }
     }
 }

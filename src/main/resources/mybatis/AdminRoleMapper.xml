@@ -1,16 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.example.admin.role.mapper.AdminRoleMapper">
-    <select id="nextId" resultType="long" useCache="false" flushCache="true">SELECT ADMIN_ROLE_SEQ.NEXTVAL FROM DUAL</select>
-
-    <insert id="insert">
-        INSERT INTO ADMIN_ROLE (
-            ROLE_ID, ROLE_CODE, ROLE_NAME, ENABLED, CREATED_BY, CREATED_AT, UPDATED_BY, UPDATED_AT
-        ) VALUES (
-            #{id}, #{request.roleCode}, #{request.roleName}, #{request.enabled}, #{auditor}, CURRENT_TIMESTAMP, #{auditor}, CURRENT_TIMESTAMP
-        )
-    </insert>
-
     <sql id="roleColumns">
         ROLE_ID AS id, ROLE_CODE AS roleCode, ROLE_NAME AS roleName, ENABLED AS enabled
     </sql>
@@ -29,27 +19,8 @@
                role.ROLE_NAME AS roleName,
                role.ENABLED AS enabled
           FROM ADMIN_ROLE role
-          JOIN ADMIN_USER_ROLE user_role ON user_role.ROLE_ID = role.ROLE_ID
+         JOIN ADMIN_USER_ROLE user_role ON user_role.ROLE_ID = role.ROLE_ID
          WHERE user_role.USER_ID = #{userId}
          ORDER BY role.ROLE_CODE
     </select>
-
-    <update id="update">
-        UPDATE ADMIN_ROLE
-           SET ROLE_NAME = #{request.roleName},
-               ENABLED = #{request.enabled},
-               UPDATED_BY = #{auditor},
-               UPDATED_AT = CURRENT_TIMESTAMP
-         WHERE ROLE_ID = #{id}
-    </update>
-
-    <delete id="delete">DELETE FROM ADMIN_ROLE WHERE ROLE_ID = #{id}</delete>
-    <delete id="deleteMenus">DELETE FROM ADMIN_ROLE_MENU WHERE ROLE_ID = #{roleId}</delete>
-
-    <insert id="insertMenus">
-        INSERT INTO ADMIN_ROLE_MENU (ROLE_ID, MENU_ID)
-        <foreach collection="menuIds" item="menuId" separator=" UNION ALL ">
-            SELECT #{roleId}, #{menuId} FROM DUAL
-        </foreach>
-    </insert>
 </mapper>
