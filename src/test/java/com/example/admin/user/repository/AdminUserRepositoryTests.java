@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -77,6 +78,33 @@ class AdminUserRepositoryTests {
         var users = userRepository.searchByLoginIdIgnoreCase("MINT");
 
         assertThat(users).extracting(AdminUser::getLoginId).containsExactly("mint.admin");
+    }
+
+    @Test
+    void findsEnabledUserWithLoginIdSpecification() {
+        userRepository.save(AdminUser.create("mint.admin", "Mint Admin", true));
+        userRepository.save(AdminUser.create("mint.disabled", "Mint Disabled", false));
+        entityManager.flush();
+        entityManager.clear();
+
+        var users = userRepository.findAll(Specification.allOf(
+                AdminUserSpecifications.loginIdContains("MINT"),
+                AdminUserSpecifications.enabledEquals(true)));
+
+        assertThat(users).extracting(AdminUser::getLoginId).containsExactly("mint.admin");
+    }
+
+    @Test
+    void excludesEnabledUserWhenSpecificationMatchesDisabledUsers() {
+        userRepository.save(AdminUser.create("mint.admin", "Mint Admin", true));
+        entityManager.flush();
+        entityManager.clear();
+
+        var users = userRepository.findAll(Specification.allOf(
+                AdminUserSpecifications.loginIdContains("MINT"),
+                AdminUserSpecifications.enabledEquals(false)));
+
+        assertThat(users).extracting(AdminUser::getLoginId).doesNotContain("mint.admin");
     }
 
     @Test
