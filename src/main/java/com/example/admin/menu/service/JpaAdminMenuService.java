@@ -33,11 +33,6 @@ public class JpaAdminMenuService {
         this.menuMapper = menuMapper;
     }
 
-    @Transactional
-    public MenuResponse create(MenuRequest request) {
-        return menuMapper.toResponse(menuRepository.save(menuMapper.toEntity(request)));
-    }
-
     public MenuResponse find(Long id) {
         return menuMapper.toResponse(menu(id));
     }
@@ -53,18 +48,6 @@ public class JpaAdminMenuService {
         return menuRepository.findByParentMenuIdOrderBySortOrderAsc(parentMenuId).stream()
                 .map(menuMapper::toResponse)
                 .toList();
-    }
-
-    @Transactional
-    public MenuResponse update(Long id, MenuRequest request) {
-        AdminMenu menu = menu(id);
-        menuMapper.updateEntity(menu, request);
-        return menuMapper.toResponse(menu);
-    }
-
-    @Transactional
-    public void delete(Long id) {
-        menuRepository.delete(menu(id));
     }
 
     @Transactional

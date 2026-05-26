@@ -46,11 +46,13 @@ com.example.admin
 | 사용자-역할 저장 | `PUT /api/jpa/users/{id}/roles` | JPA |
 | 역할 등록/수정/삭제 | `/api/jpa/roles` | JPA |
 | 역할-메뉴 저장 | `PUT /api/jpa/roles/{id}/menus` | JPA |
-| 메뉴 등록/수정/삭제 | `/api/jpa/menus` | JPA |
+| 메뉴 조회 | `GET /api/jpa/menus`, `GET /api/jpa/menus/{id}`, `GET /api/jpa/menus/children` | JPA |
 | 메뉴 ag-Grid 저장 | `POST /api/jpa/menus/grid-save` | JPA |
 | 복잡 조회 | MyBatis store | MyBatis select only |
 
 MyBatis의 기존 쓰기 API와 쓰기 SQL은 제거했습니다. `src/main/resources/mybatis`에는 조회 SQL만 남아야 합니다.
+
+메뉴 도메인은 조회와 ag-Grid 저장 예제로 둡니다. 메뉴의 등록, 수정, 삭제는 단건 API를 따로 열지 않고 `POST /api/jpa/menus/grid-save`에서 처리합니다. 사용자와 역할 도메인은 기존처럼 등록, 수정, 삭제, 조회 API를 모두 유지합니다.
 
 ## DTO와 Entity 작성 기준
 

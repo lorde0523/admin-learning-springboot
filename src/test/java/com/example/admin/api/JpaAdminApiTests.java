@@ -80,22 +80,7 @@ class JpaAdminApiTests {
                 .getContentAsString();
         long roleId = objectMapper.readTree(roleResponse).get("id").asLong();
 
-        String menuResponse = mockMvc.perform(post("/api/jpa/menus")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "menuCode": "ROLE_MENU_LIST",
-                                  "menuName": "Role menu list",
-                                  "parentMenuId": null,
-                                  "sortOrder": 1,
-                                  "enabled": true
-                                }
-                                """))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        long menuId = objectMapper.readTree(menuResponse).get("id").asLong();
+        long menuId = createMenuThroughGridSave("ROLE_MENU_LIST", "Role menu list", 1);
 
         mockMvc.perform(put("/api/jpa/roles/{roleId}/menus", roleId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -128,41 +113,8 @@ class JpaAdminApiTests {
 
     @Test
     void savesMenuGridChangesThroughJpa() throws Exception {
-        String existing = mockMvc.perform(post("/api/jpa/menus")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "menuCode": "GRID_OLD",
-                                  "menuName": "Old menu",
-                                  "parentMenuId": null,
-                                  "sortOrder": 1,
-                                  "enabled": true
-                                }
-                                """))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        Long existingId = objectMapper.readTree(existing).get("id").asLong();
-
-        String deleted = mockMvc.perform(post("/api/jpa/menus")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "menuCode": "GRID_DELETE",
-                                  "menuName": "Delete menu",
-                                  "parentMenuId": null,
-                                  "sortOrder": 2,
-                                  "enabled": true
-                                }
-                                """))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        Long deletedId = objectMapper.readTree(deleted).get("id").asLong();
+        Long existingId = createMenuThroughGridSave("GRID_OLD", "Old menu", 1);
+        Long deletedId = createMenuThroughGridSave("GRID_DELETE", "Delete menu", 2);
 
         mockMvc.perform(post("/api/jpa/menus/grid-save")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -269,23 +221,7 @@ class JpaAdminApiTests {
 
     @Test
     void rejectsDuplicateUpdatedMenuIdsThroughJpaGridSave() throws Exception {
-        String existing = mockMvc.perform(post("/api/jpa/menus")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "menuCode": "GRID_DUP",
-                                  "menuName": "Duplicate menu",
-                                  "parentMenuId": null,
-                                  "sortOrder": 1,
-                                  "enabled": true
-                                }
-                                """))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        Long existingId = objectMapper.readTree(existing).get("id").asLong();
+        Long existingId = createMenuThroughGridSave("GRID_DUP", "Duplicate menu", 1);
 
         mockMvc.perform(post("/api/jpa/menus/grid-save")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -347,23 +283,7 @@ class JpaAdminApiTests {
 
     @Test
     void rejectsDeleteAndUpdateMenuIdConflictsThroughJpaGridSave() throws Exception {
-        String existing = mockMvc.perform(post("/api/jpa/menus")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "menuCode": "GRID_CONFLICT",
-                                  "menuName": "Conflict menu",
-                                  "parentMenuId": null,
-                                  "sortOrder": 1,
-                                  "enabled": true
-                                }
-                                """))
-                .andExpect(status().isCreated())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        Long existingId = objectMapper.readTree(existing).get("id").asLong();
+        Long existingId = createMenuThroughGridSave("GRID_CONFLICT", "Conflict menu", 1);
 
         mockMvc.perform(post("/api/jpa/menus/grid-save")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -387,5 +307,42 @@ class JpaAdminApiTests {
                 .andExpect(jsonPath("$.code", is("BAD_REQUEST")))
                 .andExpect(jsonPath("$.message", is("deletedIds and updatedRows.id must not overlap.")))
                 .andExpect(jsonPath("$.timestamp").exists());
+    }
+
+    private Long createMenuThroughGridSave(String menuCode, String menuName, int sortOrder) throws Exception {
+        mockMvc.perform(post("/api/jpa/menus/grid-save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "createdRows": [
+                                    {
+                                      "menuCode": "%s",
+                                      "menuName": "%s",
+                                      "parentMenuId": null,
+                                      "sortOrder": %d,
+                                      "enabled": true
+                                    }
+                                  ],
+                                  "updatedRows": null,
+                                  "deletedIds": null
+                                }
+                                """.formatted(menuCode, menuName, sortOrder)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(1))
+                .andExpect(jsonPath("$.updatedCount").value(0))
+                .andExpect(jsonPath("$.deletedCount").value(0));
+
+        String menuResponse = mockMvc.perform(get("/api/jpa/menus"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        var menus = objectMapper.readTree(menuResponse);
+        for (var menu : menus) {
+            if (menuCode.equals(menu.get("menuCode").asText())) {
+                return menu.get("id").asLong();
+            }
+        }
+        throw new AssertionError("Created menu was not found: " + menuCode);
     }
 }
