@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.example.admin.menu.mapper.AdminMenuMapper">
+<mapper namespace="com.example.admin.menu.store.MyBatisAdminMenuStore">
     <sql id="menuColumns">
         MENU_ID AS id,
         MENU_CODE AS menuCode,
@@ -12,11 +12,11 @@
         CREATED_AT AS createdAt
     </sql>
 
-    <select id="findById" resultType="com.example.admin.menu.mapper.AdminMenuMapper$MenuRow">
+    <select id="findById" resultType="com.example.admin.menu.store.MyBatisAdminMenuStore$MenuRow">
         SELECT <include refid="menuColumns"/> FROM ADMIN_MENU WHERE MENU_ID = #{id}
     </select>
 
-    <select id="search" resultType="com.example.admin.menu.mapper.AdminMenuMapper$MenuRow">
+    <select id="search" resultType="com.example.admin.menu.store.MyBatisAdminMenuStore$MenuRow">
         SELECT <include refid="menuColumns"/>
           FROM ADMIN_MENU
          <where>
@@ -27,14 +27,14 @@
          ORDER BY SORT_ORDER, MENU_ID
     </select>
 
-    <select id="children" resultType="com.example.admin.menu.mapper.AdminMenuMapper$MenuRow">
+    <select id="children" resultType="com.example.admin.menu.store.MyBatisAdminMenuStore$MenuRow">
         SELECT <include refid="menuColumns"/>
           FROM ADMIN_MENU
          WHERE PARENT_MENU_ID = #{parentMenuId}
          ORDER BY SORT_ORDER, MENU_ID
     </select>
 
-    <select id="findByRoleId" resultType="com.example.admin.menu.mapper.AdminMenuMapper$MenuRow">
+    <select id="findByRoleId" resultType="com.example.admin.menu.store.MyBatisAdminMenuStore$MenuRow">
         SELECT menu.MENU_ID AS id,
                menu.MENU_CODE AS menuCode,
                menu.MENU_NAME AS menuName,

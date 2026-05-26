@@ -1,4 +1,4 @@
-package com.example.admin.menu.mapper;
+package com.example.admin.menu.store;
 
 import com.example.admin.menu.dto.MenuDtos;
 import java.time.LocalDateTime;
@@ -11,7 +11,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 @Mapper
-public interface AdminMenuMapper {
+public interface MyBatisAdminMenuStore {
 
     MenuRow findById(Long id);
 
@@ -41,4 +41,3 @@ public interface AdminMenuMapper {
         }
     }
 }
-

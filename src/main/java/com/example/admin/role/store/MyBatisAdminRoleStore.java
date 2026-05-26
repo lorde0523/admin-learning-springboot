@@ -1,4 +1,4 @@
-package com.example.admin.role.mapper;
+package com.example.admin.role.store;
 
 import com.example.admin.role.dto.RoleDtos;
 import java.util.List;
@@ -9,7 +9,7 @@ import lombok.Setter;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
-public interface AdminRoleMapper {
+public interface MyBatisAdminRoleStore {
 
     RoleRow findById(Long id);
 
@@ -36,4 +36,3 @@ public interface AdminRoleMapper {
         }
     }
 }
-

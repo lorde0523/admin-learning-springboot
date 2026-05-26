@@ -210,6 +210,23 @@ class JpaAdminApiTests {
     }
 
     @Test
+    void skipsNullMenuGridChangeGroupsThroughJpa() throws Exception {
+        mockMvc.perform(post("/api/jpa/menus/grid-save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "createdRows": null,
+                                  "updatedRows": null,
+                                  "deletedIds": null
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(0))
+                .andExpect(jsonPath("$.updatedCount").value(0))
+                .andExpect(jsonPath("$.deletedCount").value(0));
+    }
+
+    @Test
     void rejectsMissingDeletedMenuIdsThroughJpaGridSave() throws Exception {
         mockMvc.perform(post("/api/jpa/menus/grid-save")
                         .contentType(MediaType.APPLICATION_JSON)

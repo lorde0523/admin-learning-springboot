@@ -31,7 +31,7 @@ Swagger UI는 `http://localhost:8080/swagger-ui.html`에서 확인합니다.
 ```text
 com.example.admin
 |- common : auditing, security, exception, OpenAPI, MyBatis config
-|- user   : 사용자 API, JPA repository, query-only MyBatis mapper
+|- user   : 사용자 API, JPA repository, query-only MyBatis store
 |- role   : 역할 API, 역할-메뉴 권한 매핑
 `- menu   : 메뉴 API, 계층 메뉴, ag-Grid 저장
 ```
@@ -48,7 +48,7 @@ com.example.admin
 | 역할-메뉴 저장 | `PUT /api/jpa/roles/{id}/menus` | JPA |
 | 메뉴 등록/수정/삭제 | `/api/jpa/menus` | JPA |
 | 메뉴 ag-Grid 저장 | `POST /api/jpa/menus/grid-save` | JPA |
-| 복잡 조회 | MyBatis mapper | MyBatis select only |
+| 복잡 조회 | MyBatis store | MyBatis select only |
 
 MyBatis의 기존 쓰기 API와 쓰기 SQL은 제거했습니다. `src/main/resources/mybatis`에는 조회 SQL만 남아야 합니다.
 
@@ -61,7 +61,7 @@ MyBatis의 기존 쓰기 API와 쓰기 SQL은 제거했습니다. `src/main/reso
 - JPA Entity는 `@Getter`, `@NoArgsConstructor(access = AccessLevel.PROTECTED)`, 정적 팩토리 메서드, 의미 있는 상태 변경 메서드를 기본으로 둡니다.
 - Request DTO는 JSON 바인딩을 위해 `@Getter`, `@Setter`, `@NoArgsConstructor`, `@AllArgsConstructor`를 사용합니다.
 - Response DTO는 `@Getter`, `@Builder`, `@NoArgsConstructor`, `@AllArgsConstructor`를 우선 사용합니다.
-- MyBatis mapper projection도 `record` 대신 Lombok class로 작성합니다.
+- MyBatis store projection도 `record` 대신 Lombok class로 작성합니다.
 
 예시:
 
@@ -215,6 +215,208 @@ Criteria API는 문자열 JPQL보다 장황하지만 동적 조건을 코드로 
 6. 처리 건수를 응답합니다.
 
 이 방식은 ag-Grid의 delta 모델과 잘 맞고, JPA auditing과 entity lifecycle을 그대로 사용할 수 있습니다.
+
+## ag-Grid 저장 명명 규칙
+
+새로운 ag-Grid 저장 기능을 만들 때는 도메인 이름을 앞에 두고 같은 패턴으로 맞춥니다.
+
+### Entity
+
+Entity는 기존 JPA 명명 규칙을 따릅니다.
+
+```text
+Admin{Domain}
+```
+
+예시:
+
+- `AdminMenu`
+- `AdminUser`
+- `AdminRole`
+
+Entity에는 grid 전용 이름을 붙이지 않습니다. grid는 화면 저장 방식일 뿐이고, Entity는 도메인 모델입니다.
+
+### DTO
+
+DTO는 `{Domain}Dtos` 안에 nested class로 둡니다.
+
+```text
+{Domain}Request
+{Domain}GridRow
+{Domain}GridSaveRequest
+GridSaveResponse
+{Domain}Response
+```
+
+예시:
+
+```java
+public final class MenuDtos {
+
+    public static class MenuRequest {
+        // 등록에 필요한 필드
+    }
+
+    public static class MenuGridRow extends MenuRequest {
+        private Long id;
+    }
+
+    public static class MenuGridSaveRequest {
+        private List<MenuRequest> createdRows;
+        private List<MenuGridRow> updatedRows;
+        private List<Long> deletedIds;
+    }
+
+    public static class GridSaveResponse {
+        private int createdCount;
+        private int updatedCount;
+        private int deletedCount;
+    }
+}
+```
+
+기본 원칙:
+
+- `createdRows`는 id가 필요 없는 `{Domain}Request`를 사용합니다.
+- `updatedRows`는 id가 필요한 `{Domain}GridRow`를 사용합니다.
+- `{Domain}GridRow`는 `{Domain}Request`를 상속하고 `id`를 추가합니다.
+- `deletedIds`는 id 목록만 받습니다.
+- row 그룹 자체가 `null`이면 작업 없음으로 처리합니다.
+- row 그룹 안의 `null` row나 수정 row의 `null` id는 잘못된 요청으로 처리합니다.
+
+등록 시에도 외부 id가 반드시 필요한 도메인은 별도 DTO를 만듭니다.
+
+```text
+{Domain}CreateGridRow
+{Domain}UpdateGridRow
+```
+
+이 경우에도 이름은 역할이 드러나게 분리하고, 모든 도메인에 억지로 같은 DTO를 적용하지 않습니다.
+
+### Mapper
+
+JPA Entity와 DTO 변환은 도메인별 mapper가 담당합니다.
+
+```text
+{Domain}Mapper
+```
+
+예시:
+
+```java
+@Component
+public class MenuMapper {
+
+    public AdminMenu toEntity(MenuDtos.MenuRequest request) {
+        // DTO -> Entity
+    }
+
+    public void updateEntity(AdminMenu menu, MenuDtos.MenuRequest request) {
+        // 일반 수정 요청 -> managed entity 변경
+    }
+
+    public void updateEntity(AdminMenu menu, MenuDtos.MenuGridRow row) {
+        // grid 수정 row -> managed entity 변경
+    }
+
+    public MenuDtos.MenuResponse toResponse(AdminMenu menu) {
+        // Entity -> DTO
+    }
+}
+```
+
+mapper 명명 규칙:
+
+- `toEntity`: 등록 DTO를 Entity로 변환합니다.
+- `updateEntity`: 수정 DTO 값을 managed entity에 반영합니다.
+- `toResponse`: Entity를 응답 DTO로 변환합니다.
+- 단순 필드 복사라도 Entity의 상태 변경은 setter가 아니라 도메인 메서드를 호출합니다.
+
+### Store
+
+MyBatis와 연결되는 Java interface는 mapper가 아니라 store로 둡니다.
+
+```text
+{Domain}/store/MyBatisAdmin{Domain}Store
+```
+
+예시:
+
+```text
+user/store/MyBatisAdminUserStore
+role/store/MyBatisAdminRoleStore
+menu/store/MyBatisAdminMenuStore
+```
+
+store 명명 규칙:
+
+- `store`: MyBatis, 외부 API, 파일 등 외부 저장소/조회 기술 연결부입니다.
+- `mapper`: DTO와 Entity 변환 전용입니다.
+- `repository`: Spring Data JPA 접근 전용입니다.
+- MyBatis XML의 `namespace`는 store interface의 fully qualified name과 맞춥니다.
+- MyBatis XML의 `resultType`도 store 내부 row projection을 가리킵니다.
+
+### Service
+
+Service 메서드는 화면 동작을 기준으로 이름을 붙입니다.
+
+```text
+saveGrid
+```
+
+예시:
+
+```java
+@Transactional
+public MenuDtos.GridSaveResponse saveGrid(MenuDtos.MenuGridSaveRequest request) {
+    GridSaveResult result = gridSaveExecutor.save(
+            request.getCreatedRows(),
+            request.getUpdatedRows(),
+            request.getDeletedIds(),
+            menuRepository,
+            MenuDtos.MenuGridRow::getId,
+            AdminMenu::getId,
+            menuMapper::toEntity,
+            menuMapper::updateEntity,
+            "One or more menus do not exist.");
+
+    return MenuDtos.GridSaveResponse.builder()
+            .createdCount(result.getCreatedCount())
+            .updatedCount(result.getUpdatedCount())
+            .deletedCount(result.getDeletedCount())
+            .build();
+}
+```
+
+Service는 저장 순서와 트랜잭션 경계를 표현하고, DTO 변환 세부 로직은 mapper에 맡깁니다.
+
+### Common Grid
+
+공통 grid 저장 클래스는 도메인 이름을 붙이지 않습니다.
+
+```text
+GridSaveExecutor
+GridSaveResult
+```
+
+공통 클래스의 책임:
+
+- null row 그룹 skip
+- row 그룹 내부 null 검증
+- 삭제 id 중복/null 검증
+- 수정 row id 중복/null 검증
+- 삭제/수정 id 충돌 검증
+- 삭제 대상 존재 확인
+- 등록 저장
+- 수정 대상 존재 확인
+- 삭제, 등록, 수정 count 반환
+
+공통 클래스가 알지 않아야 하는 것:
+
+- 도메인별 필드 이름
+- DTO와 Entity의 상세 변환 규칙
+- Entity 상태 변경 메서드의 내부 내용
+- 응답 DTO의 최종 shape
 
 ## ag-Grid 저장 방식 선택지
 

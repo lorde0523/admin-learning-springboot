@@ -1,4 +1,4 @@
-package com.example.admin.user.mapper;
+package com.example.admin.user.store;
 
 import com.example.admin.role.dto.RoleDtos;
 import com.example.admin.user.dto.UserDtos;
@@ -12,7 +12,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 @Mapper
-public interface AdminUserMapper {
+public interface MyBatisAdminUserStore {
 
     UserRow findById(Long id);
 
@@ -38,4 +38,3 @@ public interface AdminUserMapper {
         }
     }
 }
-

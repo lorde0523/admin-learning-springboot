@@ -1,0 +1,17 @@
+package com.example.admin.common.grid;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+@Getter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class GridSaveResult {
+
+    private int createdCount;
+    private int updatedCount;
+    private int deletedCount;
+}
