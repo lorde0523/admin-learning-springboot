@@ -1,6 +1,6 @@
 package com.example.admin.menu.store;
 
-import com.example.admin.menu.dto.MenuDtos;
+import com.example.admin.menu.dto.adminmenu.MenuResponse;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -35,8 +35,8 @@ public interface MyBatisAdminMenuStore {
         private String createdBy;
         private LocalDateTime createdAt;
 
-        public MenuDtos.MenuResponse toResponse() {
-            return new MenuDtos.MenuResponse(
+        public MenuResponse toResponse() {
+            return new MenuResponse(
                     id, menuCode, menuName, parentMenuId, sortOrder, enabled, createdBy, createdAt);
         }
     }

@@ -1,6 +1,6 @@
 package com.example.admin.role.api;
 
-import com.example.admin.menu.dto.MenuDtos;
+import com.example.admin.menu.dto.adminmenu.MenuResponse;
 import com.example.admin.role.dto.RoleDtos;
 import com.example.admin.role.service.JpaAdminRoleService;
 import jakarta.validation.Valid;
@@ -61,7 +61,7 @@ public class JpaAdminRoleController {
     }
 
     @GetMapping("/{id}/menus")
-    public Set<MenuDtos.MenuResponse> menus(@PathVariable Long id) {
+    public Set<MenuResponse> menus(@PathVariable Long id) {
         return roleService.menus(id);
     }
 }

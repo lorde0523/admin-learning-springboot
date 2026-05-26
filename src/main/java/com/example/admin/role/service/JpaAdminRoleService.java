@@ -1,7 +1,7 @@
 package com.example.admin.role.service;
 
 import com.example.admin.common.exception.ResourceNotFoundException;
-import com.example.admin.menu.dto.MenuDtos;
+import com.example.admin.menu.dto.adminmenu.MenuResponse;
 import com.example.admin.menu.repository.AdminMenuRepository;
 import com.example.admin.role.dto.RoleDtos;
 import com.example.admin.role.entity.AdminRole;
@@ -61,9 +61,9 @@ public class JpaAdminRoleService {
         return menusResponse(role);
     }
 
-    public Set<MenuDtos.MenuResponse> menus(Long id) {
+    public Set<MenuResponse> menus(Long id) {
         return roleWithMenus(id).getMenus().stream()
-                .map(MenuDtos.MenuResponse::from)
+                .map(MenuResponse::from)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 

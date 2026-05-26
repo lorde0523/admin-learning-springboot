@@ -1,6 +1,9 @@
 package com.example.admin.menu.api;
 
-import com.example.admin.menu.dto.MenuDtos;
+import com.example.admin.menu.dto.adminmenu.MenuGridSaveRequest;
+import com.example.admin.menu.dto.adminmenu.MenuGridSaveResponse;
+import com.example.admin.menu.dto.adminmenu.MenuRequest;
+import com.example.admin.menu.dto.adminmenu.MenuResponse;
 import com.example.admin.menu.service.JpaAdminMenuService;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -27,33 +30,33 @@ public class JpaAdminMenuController {
     }
 
     @PostMapping
-    public ResponseEntity<MenuDtos.MenuResponse> create(@Valid @RequestBody MenuDtos.MenuRequest request) {
-        MenuDtos.MenuResponse response = menuService.create(request);
+    public ResponseEntity<MenuResponse> create(@Valid @RequestBody MenuRequest request) {
+        MenuResponse response = menuService.create(request);
         return ResponseEntity.created(URI.create("/api/jpa/menus/" + response.getId())).body(response);
     }
 
     @PostMapping("/grid-save")
-    public MenuDtos.GridSaveResponse saveGrid(@Valid @RequestBody MenuDtos.MenuGridSaveRequest request) {
+    public MenuGridSaveResponse saveGrid(@Valid @RequestBody MenuGridSaveRequest request) {
         return menuService.saveGrid(request);
     }
 
     @GetMapping("/{id}")
-    public MenuDtos.MenuResponse find(@PathVariable Long id) {
+    public MenuResponse find(@PathVariable Long id) {
         return menuService.find(id);
     }
 
     @GetMapping
-    public List<MenuDtos.MenuResponse> search(@RequestParam(required = false) String nameKeyword) {
+    public List<MenuResponse> search(@RequestParam(required = false) String nameKeyword) {
         return menuService.search(nameKeyword);
     }
 
     @GetMapping("/children")
-    public List<MenuDtos.MenuResponse> children(@RequestParam Long parentMenuId) {
+    public List<MenuResponse> children(@RequestParam Long parentMenuId) {
         return menuService.children(parentMenuId);
     }
 
     @PutMapping("/{id}")
-    public MenuDtos.MenuResponse update(@PathVariable Long id, @Valid @RequestBody MenuDtos.MenuRequest request) {
+    public MenuResponse update(@PathVariable Long id, @Valid @RequestBody MenuRequest request) {
         return menuService.update(id, request);
     }
 

@@ -238,45 +238,53 @@ Entity에는 grid 전용 이름을 붙이지 않습니다. grid는 화면 저장
 
 ### DTO
 
-DTO는 `{Domain}Dtos` 안에 nested class로 둡니다.
+DTO는 API Java 파일 기준 패키지 아래에 개별 Java 파일로 둡니다.
 
 ```text
-{Domain}Request
-{Domain}GridRow
-{Domain}GridSaveRequest
-GridSaveResponse
-{Domain}Response
+{domain}/api/{ApiFile}.java
+{domain}/dto/{api-package}/...
 ```
 
 예시:
 
+```text
+menu/api/JpaAdminMenuController.java
+menu/dto/adminmenu/MenuRequest.java
+menu/dto/adminmenu/MenuGridRow.java
+menu/dto/adminmenu/MenuGridSaveRequest.java
+menu/dto/adminmenu/MenuGridSaveResponse.java
+menu/dto/adminmenu/MenuResponse.java
+```
+
+DTO 파일 예시:
+
 ```java
-public final class MenuDtos {
+public class MenuRequest {
+    // 등록에 필요한 필드
+}
 
-    public static class MenuRequest {
-        // 등록에 필요한 필드
-    }
+public class MenuGridRow extends MenuRequest {
+    private Long id;
+}
 
-    public static class MenuGridRow extends MenuRequest {
-        private Long id;
-    }
+public class MenuGridSaveRequest {
+    private List<MenuRequest> createdRows;
+    private List<MenuGridRow> updatedRows;
+    private List<Long> deletedIds;
+}
 
-    public static class MenuGridSaveRequest {
-        private List<MenuRequest> createdRows;
-        private List<MenuGridRow> updatedRows;
-        private List<Long> deletedIds;
-    }
-
-    public static class GridSaveResponse {
-        private int createdCount;
-        private int updatedCount;
-        private int deletedCount;
-    }
+public class MenuGridSaveResponse {
+    private int createdCount;
+    private int updatedCount;
+    private int deletedCount;
 }
 ```
 
 기본 원칙:
 
+- DTO 패키지는 API Java 파일 단위로 만든다.
+- 같은 API 파일에서 사용하는 request, response, row DTO는 같은 DTO 패키지에 둔다.
+- DTO는 nested class가 아니라 개별 Java 파일로 만든다.
 - `createdRows`는 id가 필요 없는 `{Domain}Request`를 사용합니다.
 - `updatedRows`는 id가 필요한 `{Domain}GridRow`를 사용합니다.
 - `{Domain}GridRow`는 `{Domain}Request`를 상속하고 `id`를 추가합니다.
@@ -307,19 +315,19 @@ JPA Entity와 DTO 변환은 도메인별 mapper가 담당합니다.
 @Component
 public class MenuMapper {
 
-    public AdminMenu toEntity(MenuDtos.MenuRequest request) {
+    public AdminMenu toEntity(MenuRequest request) {
         // DTO -> Entity
     }
 
-    public void updateEntity(AdminMenu menu, MenuDtos.MenuRequest request) {
+    public void updateEntity(AdminMenu menu, MenuRequest request) {
         // 일반 수정 요청 -> managed entity 변경
     }
 
-    public void updateEntity(AdminMenu menu, MenuDtos.MenuGridRow row) {
+    public void updateEntity(AdminMenu menu, MenuGridRow row) {
         // grid 수정 row -> managed entity 변경
     }
 
-    public MenuDtos.MenuResponse toResponse(AdminMenu menu) {
+    public MenuResponse toResponse(AdminMenu menu) {
         // Entity -> DTO
     }
 }
@@ -368,19 +376,19 @@ saveGrid
 
 ```java
 @Transactional
-public MenuDtos.GridSaveResponse saveGrid(MenuDtos.MenuGridSaveRequest request) {
+public MenuGridSaveResponse saveGrid(MenuGridSaveRequest request) {
     GridSaveResult result = gridSaveExecutor.save(
             request.getCreatedRows(),
             request.getUpdatedRows(),
             request.getDeletedIds(),
             menuRepository,
-            MenuDtos.MenuGridRow::getId,
+            MenuGridRow::getId,
             AdminMenu::getId,
             menuMapper::toEntity,
             menuMapper::updateEntity,
             "One or more menus do not exist.");
 
-    return MenuDtos.GridSaveResponse.builder()
+    return MenuGridSaveResponse.builder()
             .createdCount(result.getCreatedCount())
             .updatedCount(result.getUpdatedCount())
             .deletedCount(result.getDeletedCount())

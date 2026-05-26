@@ -1,6 +1,6 @@
 package com.example.admin.role.dto;
 
-import com.example.admin.menu.dto.MenuDtos;
+import com.example.admin.menu.dto.adminmenu.MenuResponse;
 import com.example.admin.role.entity.AdminRole;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -85,7 +85,7 @@ public final class RoleDtos {
     @AllArgsConstructor
     public static class RoleMenusResponse {
         private Long roleId;
-        private Set<MenuDtos.MenuResponse> menus;
+        private Set<MenuResponse> menus;
     }
 }
 

@@ -3,7 +3,11 @@ package com.example.admin.menu.service;
 import com.example.admin.common.exception.ResourceNotFoundException;
 import com.example.admin.common.grid.GridSaveExecutor;
 import com.example.admin.common.grid.GridSaveResult;
-import com.example.admin.menu.dto.MenuDtos;
+import com.example.admin.menu.dto.adminmenu.MenuGridRow;
+import com.example.admin.menu.dto.adminmenu.MenuGridSaveRequest;
+import com.example.admin.menu.dto.adminmenu.MenuGridSaveResponse;
+import com.example.admin.menu.dto.adminmenu.MenuRequest;
+import com.example.admin.menu.dto.adminmenu.MenuResponse;
 import com.example.admin.menu.entity.AdminMenu;
 import com.example.admin.menu.mapper.MenuMapper;
 import com.example.admin.menu.repository.AdminMenuRepository;
@@ -30,29 +34,29 @@ public class JpaAdminMenuService {
     }
 
     @Transactional
-    public MenuDtos.MenuResponse create(MenuDtos.MenuRequest request) {
+    public MenuResponse create(MenuRequest request) {
         return menuMapper.toResponse(menuRepository.save(menuMapper.toEntity(request)));
     }
 
-    public MenuDtos.MenuResponse find(Long id) {
+    public MenuResponse find(Long id) {
         return menuMapper.toResponse(menu(id));
     }
 
-    public List<MenuDtos.MenuResponse> search(String nameKeyword) {
+    public List<MenuResponse> search(String nameKeyword) {
         List<AdminMenu> menus = StringUtils.hasText(nameKeyword)
                 ? menuRepository.searchByNameIgnoreCase(nameKeyword)
                 : menuRepository.findAll();
         return menus.stream().map(menuMapper::toResponse).toList();
     }
 
-    public List<MenuDtos.MenuResponse> children(Long parentMenuId) {
+    public List<MenuResponse> children(Long parentMenuId) {
         return menuRepository.findByParentMenuIdOrderBySortOrderAsc(parentMenuId).stream()
                 .map(menuMapper::toResponse)
                 .toList();
     }
 
     @Transactional
-    public MenuDtos.MenuResponse update(Long id, MenuDtos.MenuRequest request) {
+    public MenuResponse update(Long id, MenuRequest request) {
         AdminMenu menu = menu(id);
         menuMapper.updateEntity(menu, request);
         return menuMapper.toResponse(menu);
@@ -64,19 +68,19 @@ public class JpaAdminMenuService {
     }
 
     @Transactional
-    public MenuDtos.GridSaveResponse saveGrid(MenuDtos.MenuGridSaveRequest request) {
+    public MenuGridSaveResponse saveGrid(MenuGridSaveRequest request) {
         GridSaveResult result = gridSaveExecutor.save(
                 request.getCreatedRows(),
                 request.getUpdatedRows(),
                 request.getDeletedIds(),
                 menuRepository,
-                MenuDtos.MenuGridRow::getId,
+                MenuGridRow::getId,
                 AdminMenu::getId,
                 menuMapper::toEntity,
                 menuMapper::updateEntity,
                 "One or more menus do not exist.");
 
-        return MenuDtos.GridSaveResponse.builder()
+        return MenuGridSaveResponse.builder()
                 .createdCount(result.getCreatedCount())
                 .updatedCount(result.getUpdatedCount())
                 .deletedCount(result.getDeletedCount())
