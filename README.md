@@ -462,6 +462,8 @@ gridSaveExecutor.save(
         "존재하지 않는 사용자 권한 매핑이 포함되어 있습니다.");
 ```
 
+3개 이상의 key 필드를 가진 `@EmbeddedId` 예시는 [Grid Save 복합 ID 예제](docs/grid-save-composite-id-example.md)를 참고합니다.
+
 공통 클래스가 알지 않아야 하는 것:
 
 - 도메인별 필드 이름
