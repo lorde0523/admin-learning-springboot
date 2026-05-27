@@ -270,7 +270,7 @@ public class MenuGridRow extends MenuRequest {
 }
 
 public class MenuGridSaveRequest {
-    private List<MenuRequest> createdRows;
+    private List<MenuGridRow> createdRows;
     private List<MenuGridRow> updatedRows;
     private List<Long> deletedIds;
 }
@@ -279,6 +279,7 @@ public class MenuGridSaveResponse {
     private int createdCount;
     private int updatedCount;
     private int deletedCount;
+    private List<String> messages;
 }
 ```
 
@@ -287,12 +288,13 @@ public class MenuGridSaveResponse {
 - DTO 패키지는 API Java 파일 단위로 만든다.
 - 같은 API 파일에서 사용하는 request, response, row DTO는 같은 DTO 패키지에 둔다.
 - DTO는 nested class가 아니라 개별 Java 파일로 만든다.
-- `createdRows`는 id가 필요 없는 `{Domain}Request`를 사용합니다.
-- `updatedRows`는 id가 필요한 `{Domain}GridRow`를 사용합니다.
+- `createdRows`와 `updatedRows`는 화면에서 넘어온 key가 포함된 `{Domain}GridRow`를 사용합니다.
+- 등록, 수정, 삭제 key는 단일 ID와 `@EmbeddedId` 같은 복합 ID를 모두 허용합니다.
 - `{Domain}GridRow`는 `{Domain}Request`를 상속하고 `id`를 추가합니다.
 - `deletedIds`는 단일 ID 또는 복합 ID key 목록만 받습니다.
 - row 그룹 자체가 `null`이면 작업 없음으로 처리합니다.
-- row 그룹 안의 `null` row나 수정 row의 `null` id는 잘못된 요청으로 처리합니다.
+- row 그룹 안의 `null` row나 등록/수정 row의 `null` key는 잘못된 요청으로 처리합니다.
+- 등록하려는 key가 이미 DB에 있으면 예외를 던지지 않고 해당 row를 건너뛰며 `messages`에 안내 문구를 담습니다.
 
 등록 시에도 외부 id가 반드시 필요한 도메인은 별도 DTO를 만듭니다.
 
@@ -317,7 +319,7 @@ JPA Entity와 DTO 변환은 도메인별 mapper가 담당합니다.
 @Mapper(componentModel = "spring")
 public interface MenuMapper {
 
-    default AdminMenu toEntity(MenuRequest request) {
+    default AdminMenu toEntity(MenuGridRow request) {
         // DTO -> Entity
     }
 
@@ -385,6 +387,7 @@ public MenuGridSaveResponse saveGrid(MenuGridSaveRequest request) {
             request.getDeletedIds(),
             menuRepository,
             MenuGridRow::getId,
+            MenuGridRow::getId,
             AdminMenu::getId,
             menuMapper::toEntity,
             menuMapper::updateEntity,
@@ -394,6 +397,7 @@ public MenuGridSaveResponse saveGrid(MenuGridSaveRequest request) {
             .createdCount(result.getCreatedCount())
             .updatedCount(result.getUpdatedCount())
             .deletedCount(result.getDeletedCount())
+            .messages(result.getMessages())
             .build();
 }
 ```
@@ -413,11 +417,14 @@ GridSaveResult
 
 - null row 그룹 skip
 - row 그룹 내부 null 검증
+- 등록 key 중복/null 검증
 - 삭제 key 중복/null 검증
 - 수정 row key 중복/null 검증
+- 등록/수정/삭제 key 충돌 검증
 - 삭제/수정 key 충돌 검증
 - 삭제 대상 존재 확인
-- 등록 저장
+- 이미 등록된 key skip 및 메시지 반환
+- 신규 등록 저장
 - 수정 대상 존재 확인
 - 삭제, 등록, 수정 count 반환
 
@@ -431,6 +438,7 @@ gridSaveExecutor.save(
         request.getUpdatedRows(),
         request.getDeletedIds(),
         menuRepository,
+        MenuGridRow::getId,
         MenuGridRow::getId,
         AdminMenu::getId,
         menuMapper::toEntity,
@@ -446,6 +454,7 @@ gridSaveExecutor.save(
         request.getUpdatedRows(),
         request.getDeletedIds(),
         userRoleRepository,
+        row -> new AdminUserRoleId(row.getUserId(), row.getRoleId()),
         row -> new AdminUserRoleId(row.getUserId(), row.getRoleId()),
         AdminUserRole::getId,
         userRoleMapper::toEntity,

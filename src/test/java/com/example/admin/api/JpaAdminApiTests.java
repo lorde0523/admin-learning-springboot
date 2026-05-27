@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -19,6 +20,8 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest
 @AutoConfigureMockMvc
 class JpaAdminApiTests {
+
+    private static final AtomicLong MENU_ID_SEQUENCE = new AtomicLong(100_000L);
 
     @Autowired
     private MockMvc mockMvc;
@@ -122,6 +125,7 @@ class JpaAdminApiTests {
                                 {
                                   "createdRows": [
                                     {
+                                      "id": %d,
                                       "menuCode": "GRID_NEW",
                                       "menuName": "New menu",
                                       "parentMenuId": null,
@@ -141,7 +145,7 @@ class JpaAdminApiTests {
                                   ],
                                   "deletedIds": [%d]
                                 }
-                                """.formatted(existingId, deletedId)))
+                                """.formatted(nextMenuId(), existingId, deletedId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.createdCount").value(1))
                 .andExpect(jsonPath("$.updatedCount").value(1))
@@ -175,7 +179,8 @@ class JpaAdminApiTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.createdCount").value(0))
                 .andExpect(jsonPath("$.updatedCount").value(0))
-                .andExpect(jsonPath("$.deletedCount").value(0));
+                .andExpect(jsonPath("$.deletedCount").value(0))
+                .andExpect(jsonPath("$.messages").isEmpty());
     }
 
     @Test
@@ -309,6 +314,35 @@ class JpaAdminApiTests {
                 .andExpect(jsonPath("$.timestamp").exists());
     }
 
+    @Test
+    void skipsAlreadyRegisteredMenuIdsThroughJpaGridSave() throws Exception {
+        Long existingId = createMenuThroughGridSave("GRID_ALREADY_EXISTS", "Already exists menu", 1);
+
+        mockMvc.perform(post("/api/jpa/menus/grid-save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "createdRows": [
+                                    {
+                                      "id": %d,
+                                      "menuCode": "GRID_ALREADY_EXISTS_AGAIN",
+                                      "menuName": "Already exists again",
+                                      "parentMenuId": null,
+                                      "sortOrder": 2,
+                                      "enabled": true
+                                    }
+                                  ],
+                                  "updatedRows": [],
+                                  "deletedIds": []
+                                }
+                                """.formatted(existingId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(0))
+                .andExpect(jsonPath("$.updatedCount").value(0))
+                .andExpect(jsonPath("$.deletedCount").value(0))
+                .andExpect(jsonPath("$.messages[0]", is("id=" + existingId + "는 이미 등록된 데이터입니다.")));
+    }
+
     private Long createMenuThroughGridSave(String menuCode, String menuName, int sortOrder) throws Exception {
         mockMvc.perform(post("/api/jpa/menus/grid-save")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -316,6 +350,7 @@ class JpaAdminApiTests {
                                 {
                                   "createdRows": [
                                     {
+                                      "id": %d,
                                       "menuCode": "%s",
                                       "menuName": "%s",
                                       "parentMenuId": null,
@@ -326,7 +361,7 @@ class JpaAdminApiTests {
                                   "updatedRows": null,
                                   "deletedIds": null
                                 }
-                                """.formatted(menuCode, menuName, sortOrder)))
+                                """.formatted(nextMenuId(), menuCode, menuName, sortOrder)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.createdCount").value(1))
                 .andExpect(jsonPath("$.updatedCount").value(0))
@@ -344,5 +379,9 @@ class JpaAdminApiTests {
             }
         }
         throw new AssertionError("생성된 메뉴를 찾을 수 없습니다. menuCode=" + menuCode);
+    }
+
+    private Long nextMenuId() {
+        return MENU_ID_SEQUENCE.incrementAndGet();
     }
 }

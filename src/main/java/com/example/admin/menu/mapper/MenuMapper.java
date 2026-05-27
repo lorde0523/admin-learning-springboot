@@ -10,8 +10,9 @@ import org.mapstruct.MappingTarget;
 @Mapper(componentModel = "spring")
 public interface MenuMapper {
 
-    default AdminMenu toEntity(MenuRequest request) {
+    default AdminMenu toEntity(MenuGridRow request) {
         return AdminMenu.create(
+                request.getId(),
                 request.getMenuCode(),
                 request.getMenuName(),
                 request.getParentMenuId(),

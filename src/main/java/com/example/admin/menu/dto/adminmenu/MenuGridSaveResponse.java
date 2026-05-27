@@ -1,5 +1,6 @@
 package com.example.admin.menu.dto.adminmenu;
 
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -14,4 +15,5 @@ public class MenuGridSaveResponse {
     private int createdCount;
     private int updatedCount;
     private int deletedCount;
+    private List<String> messages;
 }

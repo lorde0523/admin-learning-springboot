@@ -58,6 +58,7 @@ public class JpaAdminMenuService {
                 request.getDeletedIds(),
                 menuRepository,
                 MenuGridRow::getId,
+                MenuGridRow::getId,
                 AdminMenu::getId,
                 menuMapper::toEntity,
                 menuMapper::updateEntity,
@@ -67,6 +68,7 @@ public class JpaAdminMenuService {
                 .createdCount(result.getCreatedCount())
                 .updatedCount(result.getUpdatedCount())
                 .deletedCount(result.getDeletedCount())
+                .messages(result.getMessages())
                 .build();
     }
 

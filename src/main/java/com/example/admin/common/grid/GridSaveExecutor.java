@@ -21,40 +21,35 @@ public class GridSaveExecutor {
             List<UPDATE_ROW> updatedRows,
             List<ID> deletedIds,
             JpaRepository<ENTITY, ID> repository,
+            Function<CREATE_ROW, ID> createKeyReader,
             Function<UPDATE_ROW, ID> updateKeyReader,
             Function<ENTITY, ID> entityKeyReader,
             Function<CREATE_ROW, ENTITY> createMapper,
             BiConsumer<ENTITY, UPDATE_ROW> updateApplier,
             String missingResourceMessage) {
 
-        List<ID> validDeletedIds = uniqueKeys(nullToEmpty(deletedIds), "deletedIds");
-        List<CREATE_ROW> validCreatedRows = validRows(nullToEmpty(createdRows), "createdRows");
+        List<ID> validDeletedKeys = uniqueKeys(nullToEmpty(deletedIds), "deletedIds");
+        Map<ID, CREATE_ROW> createRowsByKey = createRowsByKey(nullToEmpty(createdRows), createKeyReader);
         Map<ID, UPDATE_ROW> updateRowsByKey = updateRowsByKey(nullToEmpty(updatedRows), updateKeyReader);
-        rejectDeleteUpdateConflicts(validDeletedIds, updateRowsByKey);
+        rejectDeleteUpdateConflicts(validDeletedKeys, updateRowsByKey);
+        rejectCreateUpdateDeleteConflicts(createRowsByKey, updateRowsByKey, validDeletedKeys);
 
-        int deletedCount = deleteRows(validDeletedIds, repository, missingResourceMessage);
-        List<ENTITY> createdEntities = createRows(validCreatedRows, repository, createMapper);
+        int deletedCount = deleteRows(validDeletedKeys, repository, missingResourceMessage);
+        CreateRowsResult<ENTITY> createRowsResult =
+                createRows(createRowsByKey, repository, entityKeyReader, createMapper);
         List<ENTITY> updatedEntities =
                 updateRows(updateRowsByKey, repository, entityKeyReader, updateApplier, missingResourceMessage);
 
         return GridSaveResult.builder()
-                .createdCount(createdEntities.size())
+                .createdCount(createRowsResult.getEntities().size())
                 .updatedCount(updatedEntities.size())
                 .deletedCount(deletedCount)
+                .messages(createRowsResult.getMessages())
                 .build();
     }
 
     private <T> List<T> nullToEmpty(List<T> rows) {
         return rows == null ? List.of() : rows;
-    }
-
-    private <T> List<T> validRows(List<T> rows, String fieldName) {
-        for (T row : rows) {
-            if (row == null) {
-                throw badRequest(fieldName + "에 null row가 포함될 수 없습니다.");
-            }
-        }
-        return rows;
     }
 
     private <ID> List<ID> uniqueKeys(List<ID> keys, String fieldName) {
@@ -68,6 +63,26 @@ public class GridSaveExecutor {
             }
         }
         return List.copyOf(uniqueKeys);
+    }
+
+    private <ID, CREATE_ROW> Map<ID, CREATE_ROW> createRowsByKey(
+            List<CREATE_ROW> createdRows,
+            Function<CREATE_ROW, ID> createKeyReader) {
+        Map<ID, CREATE_ROW> rowsByKey = new LinkedHashMap<>();
+        for (CREATE_ROW row : createdRows) {
+            if (row == null) {
+                throw badRequest("createdRows에 null row가 포함될 수 없습니다.");
+            }
+
+            ID key = createKeyReader.apply(row);
+            if (key == null) {
+                throw badRequest("createdRows key는 null일 수 없습니다.");
+            }
+            if (rowsByKey.put(key, row) != null) {
+                throw badRequest("createdRows key가 중복될 수 없습니다.");
+            }
+        }
+        return rowsByKey;
     }
 
     private <ID, UPDATE_ROW> Map<ID, UPDATE_ROW> updateRowsByKey(
@@ -100,6 +115,20 @@ public class GridSaveExecutor {
         }
     }
 
+    private <ID, CREATE_ROW, UPDATE_ROW> void rejectCreateUpdateDeleteConflicts(
+            Map<ID, CREATE_ROW> createRowsByKey,
+            Map<ID, UPDATE_ROW> updateRowsByKey,
+            List<ID> deletedKeys) {
+        for (ID createKey : createRowsByKey.keySet()) {
+            if (updateRowsByKey.containsKey(createKey)) {
+                throw badRequest("createdRows와 updatedRows key가 서로 겹칠 수 없습니다.");
+            }
+            if (deletedKeys.contains(createKey)) {
+                throw badRequest("createdRows와 deletedIds key가 서로 겹칠 수 없습니다.");
+            }
+        }
+    }
+
     private <ID, ENTITY> int deleteRows(
             List<ID> deletedKeys,
             JpaRepository<ENTITY, ID> repository,
@@ -116,18 +145,30 @@ public class GridSaveExecutor {
         return deletedKeys.size();
     }
 
-    private <CREATE_ROW, ENTITY, ID> List<ENTITY> createRows(
-            List<CREATE_ROW> createdRows,
+    private <CREATE_ROW, ENTITY, ID> CreateRowsResult<ENTITY> createRows(
+            Map<ID, CREATE_ROW> createRowsByKey,
             JpaRepository<ENTITY, ID> repository,
+            Function<ENTITY, ID> entityKeyReader,
             Function<CREATE_ROW, ENTITY> createMapper) {
-        if (createdRows.isEmpty()) {
-            return List.of();
+        if (createRowsByKey.isEmpty()) {
+            return new CreateRowsResult<>(List.of(), List.of());
         }
 
-        List<ENTITY> createdEntities = createdRows.stream()
+        Set<ID> alreadyRegisteredKeys = new LinkedHashSet<>();
+        for (ENTITY entity : repository.findAllById(createRowsByKey.keySet())) {
+            alreadyRegisteredKeys.add(entityKeyReader.apply(entity));
+        }
+
+        List<String> messages = alreadyRegisteredKeys.stream()
+                .map(key -> "id=" + key + "는 이미 등록된 데이터입니다.")
+                .toList();
+        List<ENTITY> createdEntities = createRowsByKey.entrySet().stream()
+                .filter(entry -> !alreadyRegisteredKeys.contains(entry.getKey()))
+                .map(Map.Entry::getValue)
                 .map(createMapper)
                 .toList();
-        return repository.saveAll(createdEntities);
+
+        return new CreateRowsResult<>(repository.saveAll(createdEntities), messages);
     }
 
     private <ID, UPDATE_ROW, ENTITY> List<ENTITY> updateRows(
@@ -153,5 +194,24 @@ public class GridSaveExecutor {
 
     private ResponseStatusException badRequest(String message) {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+    }
+
+    private static class CreateRowsResult<ENTITY> {
+
+        private final List<ENTITY> entities;
+        private final List<String> messages;
+
+        private CreateRowsResult(List<ENTITY> entities, List<String> messages) {
+            this.entities = entities;
+            this.messages = messages;
+        }
+
+        private List<ENTITY> getEntities() {
+            return entities;
+        }
+
+        private List<String> getMessages() {
+            return messages;
+        }
     }
 }

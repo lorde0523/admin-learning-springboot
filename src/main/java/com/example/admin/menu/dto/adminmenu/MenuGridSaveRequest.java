@@ -2,6 +2,8 @@ package com.example.admin.menu.dto.adminmenu;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -15,7 +17,12 @@ import lombok.Setter;
 @AllArgsConstructor
 public class MenuGridSaveRequest {
 
-    private List<@NotNull @Valid MenuRequest> createdRows = new ArrayList<>();
+    @Size(max = 1000)
+    private List<@NotNull @Valid MenuGridRow> createdRows = new ArrayList<>();
+
+    @Size(max = 1000)
     private List<@NotNull @Valid MenuGridRow> updatedRows = new ArrayList<>();
-    private List<@NotNull Long> deletedIds = new ArrayList<>();
+
+    @Size(max = 1000)
+    private List<@NotNull @Positive Long> deletedIds = new ArrayList<>();
 }
