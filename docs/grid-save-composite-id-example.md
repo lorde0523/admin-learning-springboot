@@ -270,25 +270,18 @@ import com.example.admin.userrole.entity.AdminUserRoleMenu;
 import com.example.admin.userrole.entity.AdminUserRoleMenuId;
 import com.example.admin.userrole.mapper.UserRoleMenuMapper;
 import com.example.admin.userrole.repository.AdminUserRoleMenuRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class UserRoleMenuService {
 
     private final AdminUserRoleMenuRepository repository;
     private final GridSaveExecutor gridSaveExecutor;
     private final UserRoleMenuMapper mapper;
-
-    public UserRoleMenuService(
-            AdminUserRoleMenuRepository repository,
-            GridSaveExecutor gridSaveExecutor,
-            UserRoleMenuMapper mapper) {
-        this.repository = repository;
-        this.gridSaveExecutor = gridSaveExecutor;
-        this.mapper = mapper;
-    }
 
     @Transactional
     public UserRoleMenuGridSaveResponse saveGrid(UserRoleMenuGridSaveRequest request) {
