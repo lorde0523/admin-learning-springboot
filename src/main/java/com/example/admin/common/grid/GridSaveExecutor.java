@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.stream.Stream;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -20,7 +21,7 @@ public class GridSaveExecutor {
      * ag-Grid에서 전달된 등록, 수정, 삭제 row를 하나의 트랜잭션 안에서 처리하기 위한 공통 저장 진입점입니다.
      *
      * <p>row 그룹이 null이면 작업 없음으로 보고 건너뜁니다. 등록, 수정, 삭제 key는 단일 ID와
-     * {@code @EmbeddedId} 같은 복합 ID를 모두 허용합니다.
+     * {@code @EmbeddedId} 같은 복합 ID를 모두 허용합니다. DB 상태와 맞지 않는 row는 메시지로 반환합니다.
      */
     public <ID, CREATE_ROW, UPDATE_ROW, ENTITY> GridSaveResult save(
             List<CREATE_ROW> createdRows,
@@ -33,6 +34,39 @@ public class GridSaveExecutor {
             Function<CREATE_ROW, ENTITY> createMapper,
             BiConsumer<ENTITY, UPDATE_ROW> updateApplier,
             String missingResourceMessage) {
+        return save(
+                createdRows,
+                updatedRows,
+                deletedIds,
+                repository,
+                createKeyReader,
+                updateKeyReader,
+                entityKeyReader,
+                createMapper,
+                updateApplier,
+                missingResourceMessage,
+                GridSaveFailureMode.SKIP_AND_MESSAGE);
+    }
+
+    /**
+     * 저장 실패 처리 방식을 선택해서 실행합니다.
+     *
+     * <p>{@link GridSaveFailureMode#SKIP_AND_MESSAGE}는 이미 존재하는 등록 row, 존재하지 않는 수정/삭제 key를
+     * 예외로 처리하지 않고 건너뛴 뒤 메시지로 반환합니다. {@link GridSaveFailureMode#STRICT_EXCEPTION}는
+     * 해당 상황을 예외로 처리해 전체 저장을 중단합니다.
+     */
+    public <ID, CREATE_ROW, UPDATE_ROW, ENTITY> GridSaveResult save(
+            List<CREATE_ROW> createdRows,
+            List<UPDATE_ROW> updatedRows,
+            List<ID> deletedIds,
+            JpaRepository<ENTITY, ID> repository,
+            Function<CREATE_ROW, ID> createKeyReader,
+            Function<UPDATE_ROW, ID> updateKeyReader,
+            Function<ENTITY, ID> entityKeyReader,
+            Function<CREATE_ROW, ENTITY> createMapper,
+            BiConsumer<ENTITY, UPDATE_ROW> updateApplier,
+            String missingResourceMessage,
+            GridSaveFailureMode failureMode) {
 
         List<ID> validDeletedKeys = uniqueKeys(nullToEmpty(deletedIds), "deletedIds");
         Map<ID, CREATE_ROW> createRowsByKey = createRowsByKey(nullToEmpty(createdRows), createKeyReader);
@@ -40,17 +74,27 @@ public class GridSaveExecutor {
         rejectDeleteUpdateConflicts(validDeletedKeys, updateRowsByKey);
         rejectCreateUpdateDeleteConflicts(createRowsByKey, updateRowsByKey, validDeletedKeys);
 
-        int deletedCount = deleteRows(validDeletedKeys, repository, missingResourceMessage);
+        DeleteRowsResult deleteRowsResult =
+                deleteRows(validDeletedKeys, repository, entityKeyReader, missingResourceMessage, failureMode);
         CreateRowsResult<ENTITY> createRowsResult =
-                createRows(createRowsByKey, repository, entityKeyReader, createMapper);
-        List<ENTITY> updatedEntities =
-                updateRows(updateRowsByKey, repository, entityKeyReader, updateApplier, missingResourceMessage);
+                createRows(createRowsByKey, repository, entityKeyReader, createMapper, failureMode);
+        UpdateRowsResult<ENTITY> updateRowsResult =
+                updateRows(
+                        updateRowsByKey,
+                        repository,
+                        entityKeyReader,
+                        updateApplier,
+                        missingResourceMessage,
+                        failureMode);
 
         return GridSaveResult.builder()
                 .createdCount(createRowsResult.getEntities().size())
-                .updatedCount(updatedEntities.size())
-                .deletedCount(deletedCount)
-                .messages(createRowsResult.getMessages())
+                .updatedCount(updateRowsResult.getEntities().size())
+                .deletedCount(deleteRowsResult.getDeletedCount())
+                .messages(mergeMessages(
+                        createRowsResult.getMessages(),
+                        updateRowsResult.getMessages(),
+                        deleteRowsResult.getMessages()))
                 .build();
     }
 
@@ -154,32 +198,50 @@ public class GridSaveExecutor {
     }
 
     /**
-     * 삭제 대상 key가 모두 DB에 존재하는지 확인한 뒤 JPA batch delete로 삭제합니다.
+     * 삭제 대상 key를 DB에서 조회한 뒤, 실패 처리 방식에 따라 예외 또는 skip 메시지로 처리합니다.
      */
-    private <ID, ENTITY> int deleteRows(
+    private <ID, ENTITY> DeleteRowsResult deleteRows(
             List<ID> deletedKeys,
             JpaRepository<ENTITY, ID> repository,
-            String missingResourceMessage) {
+            Function<ENTITY, ID> entityKeyReader,
+            String missingResourceMessage,
+            GridSaveFailureMode failureMode) {
         if (deletedKeys.isEmpty()) {
-            return 0;
+            return new DeleteRowsResult(0, List.of());
         }
 
         List<ENTITY> deleteTargets = repository.findAllById(deletedKeys);
-        if (deleteTargets.size() != deletedKeys.size()) {
+        if (failureMode == GridSaveFailureMode.STRICT_EXCEPTION && deleteTargets.size() != deletedKeys.size()) {
             throw new ResourceNotFoundException(missingResourceMessage);
         }
-        repository.deleteAllByIdInBatch(deletedKeys);
-        return deletedKeys.size();
+
+        Set<ID> foundKeys = new LinkedHashSet<>();
+        for (ENTITY entity : deleteTargets) {
+            foundKeys.add(entityKeyReader.apply(entity));
+        }
+
+        List<ID> missingKeys = deletedKeys.stream()
+                .filter(key -> !foundKeys.contains(key))
+                .toList();
+        List<GridSaveMessage> messages = missingKeys.stream()
+                .map(key -> skippedMessage("DELETE", key, "삭제 대상 데이터가 없습니다."))
+                .toList();
+        List<ID> existingKeys = deletedKeys.stream()
+                .filter(foundKeys::contains)
+                .toList();
+        repository.deleteAllByIdInBatch(existingKeys);
+        return new DeleteRowsResult(existingKeys.size(), messages);
     }
 
     /**
-     * 등록 row 중 이미 DB에 존재하는 key는 예외가 아니라 skip 메시지로 반환하고, 신규 key만 저장합니다.
+     * 등록 row 중 이미 DB에 존재하는 key를 실패 처리 방식에 따라 예외 또는 skip 메시지로 처리하고, 신규 key만 저장합니다.
      */
     private <CREATE_ROW, ENTITY, ID> CreateRowsResult<ENTITY> createRows(
             Map<ID, CREATE_ROW> createRowsByKey,
             JpaRepository<ENTITY, ID> repository,
             Function<ENTITY, ID> entityKeyReader,
-            Function<CREATE_ROW, ENTITY> createMapper) {
+            Function<CREATE_ROW, ENTITY> createMapper,
+            GridSaveFailureMode failureMode) {
         if (createRowsByKey.isEmpty()) {
             return new CreateRowsResult<>(List.of(), List.of());
         }
@@ -189,13 +251,12 @@ public class GridSaveExecutor {
             alreadyRegisteredKeys.add(entityKeyReader.apply(entity));
         }
 
+        if (failureMode == GridSaveFailureMode.STRICT_EXCEPTION && !alreadyRegisteredKeys.isEmpty()) {
+            throw badRequest("이미 등록된 데이터가 포함되어 있습니다.");
+        }
+
         List<GridSaveMessage> messages = alreadyRegisteredKeys.stream()
-                .map(key -> GridSaveMessage.builder()
-                        .operation("CREATE")
-                        .result("SKIPPED")
-                        .key(String.valueOf(key))
-                        .message("이미 등록된 데이터입니다.")
-                        .build())
+                .map(key -> skippedMessage("CREATE", key, "이미 등록된 데이터입니다."))
                 .toList();
         List<ENTITY> createdEntities = createRowsByKey.entrySet().stream()
                 .filter(entry -> !alreadyRegisteredKeys.contains(entry.getKey()))
@@ -207,27 +268,60 @@ public class GridSaveExecutor {
     }
 
     /**
-     * 수정 대상 key가 모두 DB에 존재하는지 확인한 뒤 managed entity에 update 함수를 적용합니다.
+     * 수정 대상 key를 DB에서 조회한 뒤, 실패 처리 방식에 따라 예외 또는 skip 메시지로 처리합니다.
      */
-    private <ID, UPDATE_ROW, ENTITY> List<ENTITY> updateRows(
+    private <ID, UPDATE_ROW, ENTITY> UpdateRowsResult<ENTITY> updateRows(
             Map<ID, UPDATE_ROW> updateRowsByKey,
             JpaRepository<ENTITY, ID> repository,
             Function<ENTITY, ID> entityKeyReader,
             BiConsumer<ENTITY, UPDATE_ROW> updateApplier,
-            String missingResourceMessage) {
+            String missingResourceMessage,
+            GridSaveFailureMode failureMode) {
         if (updateRowsByKey.isEmpty()) {
-            return List.of();
+            return new UpdateRowsResult<>(List.of(), List.of());
         }
 
         List<ENTITY> updateTargets = repository.findAllById(updateRowsByKey.keySet());
-        if (updateTargets.size() != updateRowsByKey.size()) {
+        if (failureMode == GridSaveFailureMode.STRICT_EXCEPTION && updateTargets.size() != updateRowsByKey.size()) {
             throw new ResourceNotFoundException(missingResourceMessage);
         }
 
+        Set<ID> foundKeys = new LinkedHashSet<>();
         for (ENTITY entity : updateTargets) {
-            updateApplier.accept(entity, updateRowsByKey.get(entityKeyReader.apply(entity)));
+            ID key = entityKeyReader.apply(entity);
+            foundKeys.add(key);
+            updateApplier.accept(entity, updateRowsByKey.get(key));
         }
-        return updateTargets;
+
+        List<GridSaveMessage> messages = updateRowsByKey.keySet().stream()
+                .filter(key -> !foundKeys.contains(key))
+                .map(key -> skippedMessage("UPDATE", key, "수정 대상 데이터가 없습니다."))
+                .toList();
+        return new UpdateRowsResult<>(updateTargets, messages);
+    }
+
+    /**
+     * 여러 단계에서 만들어진 row 단위 메시지를 응답 순서에 맞게 합칩니다.
+     */
+    private List<GridSaveMessage> mergeMessages(
+            List<GridSaveMessage> createMessages,
+            List<GridSaveMessage> updateMessages,
+            List<GridSaveMessage> deleteMessages) {
+        return Stream.of(createMessages, updateMessages, deleteMessages)
+                .flatMap(List::stream)
+                .toList();
+    }
+
+    /**
+     * 특정 작업이 예외 없이 건너뛰어진 경우의 표준 메시지를 만듭니다.
+     */
+    private <ID> GridSaveMessage skippedMessage(String operation, ID key, String message) {
+        return GridSaveMessage.builder()
+                .operation(operation)
+                .result("SKIPPED")
+                .key(String.valueOf(key))
+                .message(message)
+                .build();
     }
 
     /**
@@ -253,6 +347,64 @@ public class GridSaveExecutor {
         private final List<GridSaveMessage> messages;
 
         private CreateRowsResult(List<ENTITY> entities, List<GridSaveMessage> messages) {
+            this.entities = entities;
+            this.messages = messages;
+        }
+
+        private List<ENTITY> getEntities() {
+            return entities;
+        }
+
+        private List<GridSaveMessage> getMessages() {
+            return messages;
+        }
+    }
+
+    /**
+     * 삭제 결과 count와 skip 메시지를 함께 전달하기 위한 내부 결과 객체입니다.
+     */
+    private static class DeleteRowsResult {
+
+        /**
+         * 실제로 삭제된 key 수입니다.
+         */
+        private final int deletedCount;
+
+        /**
+         * 삭제 요청 중 skip된 key에 대해 클라이언트가 판단할 수 있도록 내려주는 메시지 목록입니다.
+         */
+        private final List<GridSaveMessage> messages;
+
+        private DeleteRowsResult(int deletedCount, List<GridSaveMessage> messages) {
+            this.deletedCount = deletedCount;
+            this.messages = messages;
+        }
+
+        private int getDeletedCount() {
+            return deletedCount;
+        }
+
+        private List<GridSaveMessage> getMessages() {
+            return messages;
+        }
+    }
+
+    /**
+     * 수정 저장 결과와 skip 메시지를 함께 전달하기 위한 내부 결과 객체입니다.
+     */
+    private static class UpdateRowsResult<ENTITY> {
+
+        /**
+         * 실제로 수정된 entity 목록입니다.
+         */
+        private final List<ENTITY> entities;
+
+        /**
+         * 수정 요청 중 skip된 row에 대해 클라이언트가 판단할 수 있도록 내려주는 메시지 목록입니다.
+         */
+        private final List<GridSaveMessage> messages;
+
+        private UpdateRowsResult(List<ENTITY> entities, List<GridSaveMessage> messages) {
             this.entities = entities;
             this.messages = messages;
         }

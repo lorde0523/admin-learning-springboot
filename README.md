@@ -428,6 +428,12 @@ GridSaveResult
 - 수정 대상 존재 확인
 - 삭제, 등록, 수정 count 반환
 
+저장 실패 처리 방식:
+
+- `GridSaveFailureMode.SKIP_AND_MESSAGE`: 이미 등록된 등록 row, 존재하지 않는 수정/삭제 key를 예외로 보지 않고 건너뛰며 `GridSaveMessage`로 반환합니다.
+- `GridSaveFailureMode.STRICT_EXCEPTION`: DB 상태와 맞지 않는 row가 있으면 예외를 던져 전체 저장을 중단합니다.
+- 요청 자체가 이상한 경우(null, 중복, 등록/수정/삭제 key 충돌)는 두 방식 모두 400 예외로 처리합니다.
+
 공통 grid 저장은 단일 ID와 `@EmbeddedId` 같은 복합 ID를 모두 같은 방식으로 처리합니다. 핵심은 각 row와 entity에서 비교 가능한 key 객체를 만들어 넘기는 것입니다.
 
 단일 ID 예시:
@@ -444,6 +450,23 @@ gridSaveExecutor.save(
         menuMapper::toEntity,
         menuMapper::updateEntity,
         "존재하지 않는 메뉴가 포함되어 있습니다.");
+```
+
+엄격 예외 모드 예시:
+
+```java
+gridSaveExecutor.save(
+        request.getCreatedRows(),
+        request.getUpdatedRows(),
+        request.getDeletedIds(),
+        menuRepository,
+        MenuGridRow::getId,
+        MenuGridRow::getId,
+        AdminMenu::getId,
+        menuMapper::toEntity,
+        menuMapper::updateEntity,
+        "존재하지 않는 메뉴가 포함되어 있습니다.",
+        GridSaveFailureMode.STRICT_EXCEPTION);
 ```
 
 복합 ID 예시:

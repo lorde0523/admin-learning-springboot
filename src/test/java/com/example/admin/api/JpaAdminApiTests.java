@@ -2,13 +2,22 @@ package com.example.admin.api;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.example.admin.common.exception.ResourceNotFoundException;
+import com.example.admin.common.grid.GridSaveExecutor;
+import com.example.admin.common.grid.GridSaveFailureMode;
+import com.example.admin.menu.dto.adminmenu.MenuGridRow;
+import com.example.admin.menu.entity.AdminMenu;
+import com.example.admin.menu.mapper.MenuMapper;
+import com.example.admin.menu.repository.AdminMenuRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +37,15 @@ class JpaAdminApiTests {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private GridSaveExecutor gridSaveExecutor;
+
+    @Autowired
+    private AdminMenuRepository menuRepository;
+
+    @Autowired
+    private MenuMapper menuMapper;
 
     @Test
     void createsUserAndAssignsRoleThroughJpaTrack() throws Exception {
@@ -194,9 +212,14 @@ class JpaAdminApiTests {
                                   "deletedIds": [999999]
                                 }
                                 """))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code", is("NOT_FOUND")))
-                .andExpect(jsonPath("$.message", is("존재하지 않는 메뉴가 포함되어 있습니다.")));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(0))
+                .andExpect(jsonPath("$.updatedCount").value(0))
+                .andExpect(jsonPath("$.deletedCount").value(0))
+                .andExpect(jsonPath("$.messages[0].operation", is("DELETE")))
+                .andExpect(jsonPath("$.messages[0].result", is("SKIPPED")))
+                .andExpect(jsonPath("$.messages[0].key", is("999999")))
+                .andExpect(jsonPath("$.messages[0].message", is("삭제 대상 데이터가 없습니다.")));
     }
 
     @Test
@@ -219,9 +242,14 @@ class JpaAdminApiTests {
                                   "deletedIds": []
                                 }
                                 """))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code", is("NOT_FOUND")))
-                .andExpect(jsonPath("$.message", is("존재하지 않는 메뉴가 포함되어 있습니다.")));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdCount").value(0))
+                .andExpect(jsonPath("$.updatedCount").value(0))
+                .andExpect(jsonPath("$.deletedCount").value(0))
+                .andExpect(jsonPath("$.messages[0].operation", is("UPDATE")))
+                .andExpect(jsonPath("$.messages[0].result", is("SKIPPED")))
+                .andExpect(jsonPath("$.messages[0].key", is("999999")))
+                .andExpect(jsonPath("$.messages[0].message", is("수정 대상 데이터가 없습니다.")));
     }
 
     @Test
@@ -346,6 +374,26 @@ class JpaAdminApiTests {
                 .andExpect(jsonPath("$.messages[0].message", is("이미 등록된 데이터입니다.")));
     }
 
+    @Test
+    void throwsExceptionForMissingUpdatedMenuIdsWhenGridSaveModeIsStrict() {
+        MenuGridRow missingUpdateRow = menuGridRow(999999L, "GRID_STRICT", "Strict missing menu", 1, true);
+
+        assertThatThrownBy(() -> gridSaveExecutor.save(
+                        List.of(),
+                        List.of(missingUpdateRow),
+                        List.of(),
+                        menuRepository,
+                        MenuGridRow::getId,
+                        MenuGridRow::getId,
+                        AdminMenu::getId,
+                        menuMapper::toEntity,
+                        menuMapper::updateEntity,
+                        "존재하지 않는 메뉴가 포함되어 있습니다.",
+                        GridSaveFailureMode.STRICT_EXCEPTION))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("존재하지 않는 메뉴가 포함되어 있습니다.");
+    }
+
     private Long createMenuThroughGridSave(String menuCode, String menuName, int sortOrder) throws Exception {
         mockMvc.perform(post("/api/jpa/menus/grid-save")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -386,5 +434,15 @@ class JpaAdminApiTests {
 
     private Long nextMenuId() {
         return MENU_ID_SEQUENCE.incrementAndGet();
+    }
+
+    private MenuGridRow menuGridRow(Long id, String menuCode, String menuName, int sortOrder, boolean enabled) {
+        MenuGridRow row = new MenuGridRow();
+        row.setId(id);
+        row.setMenuCode(menuCode);
+        row.setMenuName(menuName);
+        row.setSortOrder(sortOrder);
+        row.setEnabled(enabled);
+        return row;
     }
 }

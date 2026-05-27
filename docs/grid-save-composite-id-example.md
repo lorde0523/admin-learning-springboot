@@ -261,6 +261,7 @@ public interface UserRoleMenuMapper {
 package com.example.admin.userrole.service;
 
 import com.example.admin.common.grid.GridSaveExecutor;
+import com.example.admin.common.grid.GridSaveFailureMode;
 import com.example.admin.common.grid.GridSaveResult;
 import com.example.admin.userrole.dto.adminuserrolemenu.UserRoleMenuGridSaveRequest;
 import com.example.admin.userrole.dto.adminuserrolemenu.UserRoleMenuGridSaveResponse;
@@ -303,7 +304,8 @@ public class UserRoleMenuService {
                 AdminUserRoleMenu::getId,
                 mapper::toEntity,
                 mapper::updateEntity,
-                "존재하지 않는 사용자 권한 메뉴 매핑이 포함되어 있습니다.");
+                "존재하지 않는 사용자 권한 메뉴 매핑이 포함되어 있습니다.",
+                GridSaveFailureMode.SKIP_AND_MESSAGE);
 
         return UserRoleMenuGridSaveResponse.builder()
                 .createdCount(result.getCreatedCount())
@@ -370,3 +372,5 @@ public class UserRoleMenuService {
 ```
 
 운영에서는 메시지에 노출할 key 형식을 더 예쁘게 만들고 싶을 수 있습니다. 그 경우 `@EmbeddedId`에 `toString`을 직접 구현하거나, `GridSaveExecutor`에 `Function<ID, String> keyMessageFormatter`를 추가하는 방식으로 확장하면 됩니다.
+
+문제가 있는 row가 하나라도 있으면 전체 저장을 막고 싶을 때는 마지막 인자를 `GridSaveFailureMode.STRICT_EXCEPTION`으로 바꿉니다.
