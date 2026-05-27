@@ -21,21 +21,21 @@ public class GridSaveExecutor {
             List<UPDATE_ROW> updatedRows,
             List<ID> deletedIds,
             JpaRepository<ENTITY, ID> repository,
-            Function<UPDATE_ROW, ID> updateIdReader,
-            Function<ENTITY, ID> entityIdReader,
+            Function<UPDATE_ROW, ID> updateKeyReader,
+            Function<ENTITY, ID> entityKeyReader,
             Function<CREATE_ROW, ENTITY> createMapper,
             BiConsumer<ENTITY, UPDATE_ROW> updateApplier,
             String missingResourceMessage) {
 
-        List<ID> validDeletedIds = uniqueIds(nullToEmpty(deletedIds), "deletedIds");
+        List<ID> validDeletedIds = uniqueKeys(nullToEmpty(deletedIds), "deletedIds");
         List<CREATE_ROW> validCreatedRows = validRows(nullToEmpty(createdRows), "createdRows");
-        Map<ID, UPDATE_ROW> updateRowsById = updateRowsById(nullToEmpty(updatedRows), updateIdReader);
-        rejectDeleteUpdateConflicts(validDeletedIds, updateRowsById);
+        Map<ID, UPDATE_ROW> updateRowsByKey = updateRowsByKey(nullToEmpty(updatedRows), updateKeyReader);
+        rejectDeleteUpdateConflicts(validDeletedIds, updateRowsByKey);
 
         int deletedCount = deleteRows(validDeletedIds, repository, missingResourceMessage);
         List<ENTITY> createdEntities = createRows(validCreatedRows, repository, createMapper);
         List<ENTITY> updatedEntities =
-                updateRows(updateRowsById, repository, entityIdReader, updateApplier, missingResourceMessage);
+                updateRows(updateRowsByKey, repository, entityKeyReader, updateApplier, missingResourceMessage);
 
         return GridSaveResult.builder()
                 .createdCount(createdEntities.size())
@@ -51,69 +51,69 @@ public class GridSaveExecutor {
     private <T> List<T> validRows(List<T> rows, String fieldName) {
         for (T row : rows) {
             if (row == null) {
-                throw badRequest(fieldName + " must not contain null rows.");
+                throw badRequest(fieldName + "에 null row가 포함될 수 없습니다.");
             }
         }
         return rows;
     }
 
-    private <ID> List<ID> uniqueIds(List<ID> ids, String fieldName) {
-        Set<ID> uniqueIds = new LinkedHashSet<>();
-        for (ID id : ids) {
-            if (id == null) {
-                throw badRequest(fieldName + " must not contain null ids.");
+    private <ID> List<ID> uniqueKeys(List<ID> keys, String fieldName) {
+        Set<ID> uniqueKeys = new LinkedHashSet<>();
+        for (ID key : keys) {
+            if (key == null) {
+                throw badRequest(fieldName + "에 null key가 포함될 수 없습니다.");
             }
-            if (!uniqueIds.add(id)) {
-                throw badRequest(fieldName + " must not contain duplicate ids.");
+            if (!uniqueKeys.add(key)) {
+                throw badRequest(fieldName + "에 중복 key가 포함될 수 없습니다.");
             }
         }
-        return List.copyOf(uniqueIds);
+        return List.copyOf(uniqueKeys);
     }
 
-    private <ID, UPDATE_ROW> Map<ID, UPDATE_ROW> updateRowsById(
+    private <ID, UPDATE_ROW> Map<ID, UPDATE_ROW> updateRowsByKey(
             List<UPDATE_ROW> updatedRows,
-            Function<UPDATE_ROW, ID> updateIdReader) {
-        Map<ID, UPDATE_ROW> rowsById = new LinkedHashMap<>();
+            Function<UPDATE_ROW, ID> updateKeyReader) {
+        Map<ID, UPDATE_ROW> rowsByKey = new LinkedHashMap<>();
         for (UPDATE_ROW row : updatedRows) {
             if (row == null) {
-                throw badRequest("updatedRows must not contain null rows.");
+                throw badRequest("updatedRows에 null row가 포함될 수 없습니다.");
             }
 
-            ID id = updateIdReader.apply(row);
-            if (id == null) {
-                throw badRequest("updatedRows.id must not be null.");
+            ID key = updateKeyReader.apply(row);
+            if (key == null) {
+                throw badRequest("updatedRows key는 null일 수 없습니다.");
             }
-            if (rowsById.put(id, row) != null) {
-                throw badRequest("updatedRows.id must not contain duplicate ids.");
+            if (rowsByKey.put(key, row) != null) {
+                throw badRequest("updatedRows key가 중복될 수 없습니다.");
             }
         }
-        return rowsById;
+        return rowsByKey;
     }
 
     private <ID, UPDATE_ROW> void rejectDeleteUpdateConflicts(
-            List<ID> deletedIds,
-            Map<ID, UPDATE_ROW> updateRowsById) {
-        for (ID deletedId : deletedIds) {
-            if (updateRowsById.containsKey(deletedId)) {
-                throw badRequest("deletedIds and updatedRows.id must not overlap.");
+            List<ID> deletedKeys,
+            Map<ID, UPDATE_ROW> updateRowsByKey) {
+        for (ID deletedKey : deletedKeys) {
+            if (updateRowsByKey.containsKey(deletedKey)) {
+                throw badRequest("deletedIds와 updatedRows key가 서로 겹칠 수 없습니다.");
             }
         }
     }
 
     private <ID, ENTITY> int deleteRows(
-            List<ID> deletedIds,
+            List<ID> deletedKeys,
             JpaRepository<ENTITY, ID> repository,
             String missingResourceMessage) {
-        if (deletedIds.isEmpty()) {
+        if (deletedKeys.isEmpty()) {
             return 0;
         }
 
-        List<ENTITY> deleteTargets = repository.findAllById(deletedIds);
-        if (deleteTargets.size() != deletedIds.size()) {
+        List<ENTITY> deleteTargets = repository.findAllById(deletedKeys);
+        if (deleteTargets.size() != deletedKeys.size()) {
             throw new ResourceNotFoundException(missingResourceMessage);
         }
-        repository.deleteAllByIdInBatch(deletedIds);
-        return deletedIds.size();
+        repository.deleteAllByIdInBatch(deletedKeys);
+        return deletedKeys.size();
     }
 
     private <CREATE_ROW, ENTITY, ID> List<ENTITY> createRows(
@@ -131,22 +131,22 @@ public class GridSaveExecutor {
     }
 
     private <ID, UPDATE_ROW, ENTITY> List<ENTITY> updateRows(
-            Map<ID, UPDATE_ROW> updateRowsById,
+            Map<ID, UPDATE_ROW> updateRowsByKey,
             JpaRepository<ENTITY, ID> repository,
-            Function<ENTITY, ID> entityIdReader,
+            Function<ENTITY, ID> entityKeyReader,
             BiConsumer<ENTITY, UPDATE_ROW> updateApplier,
             String missingResourceMessage) {
-        if (updateRowsById.isEmpty()) {
+        if (updateRowsByKey.isEmpty()) {
             return List.of();
         }
 
-        List<ENTITY> updateTargets = repository.findAllById(updateRowsById.keySet());
-        if (updateTargets.size() != updateRowsById.size()) {
+        List<ENTITY> updateTargets = repository.findAllById(updateRowsByKey.keySet());
+        if (updateTargets.size() != updateRowsByKey.size()) {
             throw new ResourceNotFoundException(missingResourceMessage);
         }
 
         for (ENTITY entity : updateTargets) {
-            updateApplier.accept(entity, updateRowsById.get(entityIdReader.apply(entity)));
+            updateApplier.accept(entity, updateRowsByKey.get(entityKeyReader.apply(entity)));
         }
         return updateTargets;
     }

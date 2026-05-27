@@ -55,7 +55,7 @@ public class JpaAdminRoleService {
         AdminRole role = roleWithMenus(id);
         var menus = new LinkedHashSet<>(menuRepository.findAllById(request.getMenuIds()));
         if (menus.size() != request.getMenuIds().size()) {
-            throw new ResourceNotFoundException("One or more menus do not exist.");
+            throw new ResourceNotFoundException("존재하지 않는 메뉴가 포함되어 있습니다.");
         }
         role.assignMenus(menus);
         return menusResponse(role);
@@ -76,12 +76,12 @@ public class JpaAdminRoleService {
 
     private AdminRole role(Long id) {
         return roleRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Role " + id + " was not found."));
+                .orElseThrow(() -> new ResourceNotFoundException("권한을 찾을 수 없습니다. id=" + id));
     }
 
     private AdminRole roleWithMenus(Long id) {
         return roleRepository.findWithMenusById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Role " + id + " was not found."));
+                .orElseThrow(() -> new ResourceNotFoundException("권한을 찾을 수 없습니다. id=" + id));
     }
 }
 

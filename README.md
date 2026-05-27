@@ -210,7 +210,7 @@ Criteria API는 문자열 JPQL보다 장황하지만 동적 조건을 코드로 
 백엔드는 하나의 service transaction 안에서 처리합니다.
 
 1. `deletedIds`의 중복과 존재 여부를 검증합니다.
-2. `updatedRows.id`의 null, 중복, 삭제 대상과의 충돌을 검증합니다.
+2. `updatedRows`의 key null, 중복, 삭제 대상과의 충돌을 검증합니다.
 3. 삭제 대상은 JPA로 삭제합니다.
 4. 등록 row는 Entity로 만들어 `saveAll` 합니다.
 5. 수정 row는 id로 Entity를 조회한 뒤 managed entity의 상태 변경 메서드를 호출합니다.
@@ -290,7 +290,7 @@ public class MenuGridSaveResponse {
 - `createdRows`는 id가 필요 없는 `{Domain}Request`를 사용합니다.
 - `updatedRows`는 id가 필요한 `{Domain}GridRow`를 사용합니다.
 - `{Domain}GridRow`는 `{Domain}Request`를 상속하고 `id`를 추가합니다.
-- `deletedIds`는 id 목록만 받습니다.
+- `deletedIds`는 단일 ID 또는 복합 ID key 목록만 받습니다.
 - row 그룹 자체가 `null`이면 작업 없음으로 처리합니다.
 - row 그룹 안의 `null` row나 수정 row의 `null` id는 잘못된 요청으로 처리합니다.
 
@@ -314,22 +314,22 @@ JPA Entity와 DTO 변환은 도메인별 mapper가 담당합니다.
 예시:
 
 ```java
-@Component
-public class MenuMapper {
+@Mapper(componentModel = "spring")
+public interface MenuMapper {
 
-    public AdminMenu toEntity(MenuRequest request) {
+    default AdminMenu toEntity(MenuRequest request) {
         // DTO -> Entity
     }
 
-    public void updateEntity(AdminMenu menu, MenuRequest request) {
+    default void updateEntity(@MappingTarget AdminMenu menu, MenuRequest request) {
         // 일반 수정 요청 -> managed entity 변경
     }
 
-    public void updateEntity(AdminMenu menu, MenuGridRow row) {
+    default void updateEntity(@MappingTarget AdminMenu menu, MenuGridRow row) {
         // grid 수정 row -> managed entity 변경
     }
 
-    public MenuResponse toResponse(AdminMenu menu) {
+    default MenuResponse toResponse(AdminMenu menu) {
         // Entity -> DTO
     }
 }
@@ -361,7 +361,7 @@ menu/store/MyBatisAdminMenuStore
 store 명명 규칙:
 
 - `store`: MyBatis, 외부 API, 파일 등 외부 저장소/조회 기술 연결부입니다.
-- `mapper`: DTO와 Entity 변환 전용입니다.
+- `mapper`: MapStruct `@Mapper(componentModel = "spring")` 기반 DTO와 Entity 변환 전용입니다.
 - `repository`: Spring Data JPA 접근 전용입니다.
 - MyBatis XML의 `namespace`는 store interface의 fully qualified name과 맞춥니다.
 - MyBatis XML의 `resultType`도 store 내부 row projection을 가리킵니다.
@@ -388,7 +388,7 @@ public MenuGridSaveResponse saveGrid(MenuGridSaveRequest request) {
             AdminMenu::getId,
             menuMapper::toEntity,
             menuMapper::updateEntity,
-            "One or more menus do not exist.");
+            "존재하지 않는 메뉴가 포함되어 있습니다.");
 
     return MenuGridSaveResponse.builder()
             .createdCount(result.getCreatedCount())
@@ -413,13 +413,45 @@ GridSaveResult
 
 - null row 그룹 skip
 - row 그룹 내부 null 검증
-- 삭제 id 중복/null 검증
-- 수정 row id 중복/null 검증
-- 삭제/수정 id 충돌 검증
+- 삭제 key 중복/null 검증
+- 수정 row key 중복/null 검증
+- 삭제/수정 key 충돌 검증
 - 삭제 대상 존재 확인
 - 등록 저장
 - 수정 대상 존재 확인
 - 삭제, 등록, 수정 count 반환
+
+공통 grid 저장은 단일 ID와 `@EmbeddedId` 같은 복합 ID를 모두 같은 방식으로 처리합니다. 핵심은 각 row와 entity에서 비교 가능한 key 객체를 만들어 넘기는 것입니다.
+
+단일 ID 예시:
+
+```java
+gridSaveExecutor.save(
+        request.getCreatedRows(),
+        request.getUpdatedRows(),
+        request.getDeletedIds(),
+        menuRepository,
+        MenuGridRow::getId,
+        AdminMenu::getId,
+        menuMapper::toEntity,
+        menuMapper::updateEntity,
+        "존재하지 않는 메뉴가 포함되어 있습니다.");
+```
+
+복합 ID 예시:
+
+```java
+gridSaveExecutor.save(
+        request.getCreatedRows(),
+        request.getUpdatedRows(),
+        request.getDeletedIds(),
+        userRoleRepository,
+        row -> new AdminUserRoleId(row.getUserId(), row.getRoleId()),
+        AdminUserRole::getId,
+        userRoleMapper::toEntity,
+        userRoleMapper::updateEntity,
+        "존재하지 않는 사용자 권한 매핑이 포함되어 있습니다.");
+```
 
 공통 클래스가 알지 않아야 하는 것:
 

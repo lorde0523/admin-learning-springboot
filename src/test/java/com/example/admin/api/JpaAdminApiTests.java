@@ -105,7 +105,7 @@ class JpaAdminApiTests {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code", is("VALIDATION_ERROR")))
-                .andExpect(jsonPath("$.message", is("Request validation failed.")))
+                .andExpect(jsonPath("$.message", is("요청 값 검증에 실패했습니다.")))
                 .andExpect(jsonPath("$.timestamp").exists())
                 .andExpect(jsonPath("$.details").doesNotExist())
                 .andExpect(jsonPath("$.occurredAt").doesNotExist());
@@ -191,7 +191,7 @@ class JpaAdminApiTests {
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code", is("NOT_FOUND")))
-                .andExpect(jsonPath("$.message", is("One or more menus do not exist.")));
+                .andExpect(jsonPath("$.message", is("존재하지 않는 메뉴가 포함되어 있습니다.")));
     }
 
     @Test
@@ -216,7 +216,7 @@ class JpaAdminApiTests {
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code", is("NOT_FOUND")))
-                .andExpect(jsonPath("$.message", is("One or more menus do not exist.")));
+                .andExpect(jsonPath("$.message", is("존재하지 않는 메뉴가 포함되어 있습니다.")));
     }
 
     @Test
@@ -251,7 +251,7 @@ class JpaAdminApiTests {
                                 """.formatted(existingId, existingId)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code", is("BAD_REQUEST")))
-                .andExpect(jsonPath("$.message", is("updatedRows.id must not contain duplicate ids.")))
+                .andExpect(jsonPath("$.message", is("updatedRows key가 중복될 수 없습니다.")))
                 .andExpect(jsonPath("$.timestamp").exists());
     }
 
@@ -277,7 +277,7 @@ class JpaAdminApiTests {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code", is("VALIDATION_ERROR")))
-                .andExpect(jsonPath("$.message", is("Request validation failed.")))
+                .andExpect(jsonPath("$.message", is("요청 값 검증에 실패했습니다.")))
                 .andExpect(jsonPath("$.timestamp").exists());
     }
 
@@ -305,7 +305,7 @@ class JpaAdminApiTests {
                                 """.formatted(existingId, existingId)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code", is("BAD_REQUEST")))
-                .andExpect(jsonPath("$.message", is("deletedIds and updatedRows.id must not overlap.")))
+                .andExpect(jsonPath("$.message", is("deletedIds와 updatedRows key가 서로 겹칠 수 없습니다.")))
                 .andExpect(jsonPath("$.timestamp").exists());
     }
 
@@ -343,6 +343,6 @@ class JpaAdminApiTests {
                 return menu.get("id").asLong();
             }
         }
-        throw new AssertionError("Created menu was not found: " + menuCode);
+        throw new AssertionError("생성된 메뉴를 찾을 수 없습니다. menuCode=" + menuCode);
     }
 }

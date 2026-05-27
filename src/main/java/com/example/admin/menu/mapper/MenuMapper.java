@@ -4,12 +4,13 @@ import com.example.admin.menu.dto.adminmenu.MenuGridRow;
 import com.example.admin.menu.dto.adminmenu.MenuRequest;
 import com.example.admin.menu.dto.adminmenu.MenuResponse;
 import com.example.admin.menu.entity.AdminMenu;
-import org.springframework.stereotype.Component;
+import org.mapstruct.Mapper;
+import org.mapstruct.MappingTarget;
 
-@Component
-public class MenuMapper {
+@Mapper(componentModel = "spring")
+public interface MenuMapper {
 
-    public AdminMenu toEntity(MenuRequest request) {
+    default AdminMenu toEntity(MenuRequest request) {
         return AdminMenu.create(
                 request.getMenuCode(),
                 request.getMenuName(),
@@ -18,15 +19,15 @@ public class MenuMapper {
                 request.getEnabled());
     }
 
-    public void updateEntity(AdminMenu menu, MenuGridRow row) {
+    default void updateEntity(@MappingTarget AdminMenu menu, MenuGridRow row) {
         updateEntity(menu, (MenuRequest) row);
     }
 
-    public void updateEntity(AdminMenu menu, MenuRequest request) {
+    default void updateEntity(@MappingTarget AdminMenu menu, MenuRequest request) {
         menu.update(request.getMenuName(), request.getParentMenuId(), request.getSortOrder(), request.getEnabled());
     }
 
-    public MenuResponse toResponse(AdminMenu menu) {
+    default MenuResponse toResponse(AdminMenu menu) {
         return MenuResponse.builder()
                 .id(menu.getId())
                 .menuCode(menu.getMenuCode())

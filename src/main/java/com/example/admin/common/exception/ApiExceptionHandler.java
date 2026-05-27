@@ -20,7 +20,7 @@ public class ApiExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException exception) {
         return ResponseEntity.badRequest()
-                .body(ErrorResponse.of("VALIDATION_ERROR", "Request validation failed."));
+                .body(ErrorResponse.of("VALIDATION_ERROR", "요청 값 검증에 실패했습니다."));
     }
 
     @ExceptionHandler(ResponseStatusException.class)

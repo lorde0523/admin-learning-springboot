@@ -57,7 +57,7 @@ public class JpaAdminUserService {
         AdminUser user = userWithRoles(id);
         var roles = new LinkedHashSet<>(roleRepository.findAllById(request.getRoleIds()));
         if (roles.size() != request.getRoleIds().size()) {
-            throw new ResourceNotFoundException("One or more roles do not exist.");
+            throw new ResourceNotFoundException("존재하지 않는 권한이 포함되어 있습니다.");
         }
         user.assignRoles(roles);
         return UserDtos.UserResponse.from(user);
@@ -65,6 +65,6 @@ public class JpaAdminUserService {
 
     private AdminUser userWithRoles(Long id) {
         return userRepository.findWithRolesById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("User " + id + " was not found."));
+                .orElseThrow(() -> new ResourceNotFoundException("사용자를 찾을 수 없습니다. id=" + id));
     }
 }
