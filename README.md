@@ -279,7 +279,7 @@ public class MenuGridSaveResponse {
     private int createdCount;
     private int updatedCount;
     private int deletedCount;
-    private List<String> messages;
+    private List<GridSaveMessage> messages;
 }
 ```
 

@@ -1,6 +1,5 @@
 package com.example.admin.common.grid;
 
-import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -10,10 +9,10 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class GridSaveResult {
+public class GridSaveMessage {
 
-    private int createdCount;
-    private int updatedCount;
-    private int deletedCount;
-    private List<GridSaveMessage> messages;
+    private String operation;
+    private String result;
+    private String key;
+    private String message;
 }

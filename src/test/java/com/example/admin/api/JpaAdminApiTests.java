@@ -340,7 +340,10 @@ class JpaAdminApiTests {
                 .andExpect(jsonPath("$.createdCount").value(0))
                 .andExpect(jsonPath("$.updatedCount").value(0))
                 .andExpect(jsonPath("$.deletedCount").value(0))
-                .andExpect(jsonPath("$.messages[0]", is("id=" + existingId + "는 이미 등록된 데이터입니다.")));
+                .andExpect(jsonPath("$.messages[0].operation", is("CREATE")))
+                .andExpect(jsonPath("$.messages[0].result", is("SKIPPED")))
+                .andExpect(jsonPath("$.messages[0].key", is(String.valueOf(existingId))))
+                .andExpect(jsonPath("$.messages[0].message", is("이미 등록된 데이터입니다.")));
     }
 
     private Long createMenuThroughGridSave(String menuCode, String menuName, int sortOrder) throws Exception {

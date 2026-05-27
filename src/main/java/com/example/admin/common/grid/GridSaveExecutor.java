@@ -159,8 +159,13 @@ public class GridSaveExecutor {
             alreadyRegisteredKeys.add(entityKeyReader.apply(entity));
         }
 
-        List<String> messages = alreadyRegisteredKeys.stream()
-                .map(key -> "id=" + key + "는 이미 등록된 데이터입니다.")
+        List<GridSaveMessage> messages = alreadyRegisteredKeys.stream()
+                .map(key -> GridSaveMessage.builder()
+                        .operation("CREATE")
+                        .result("SKIPPED")
+                        .key(String.valueOf(key))
+                        .message("이미 등록된 데이터입니다.")
+                        .build())
                 .toList();
         List<ENTITY> createdEntities = createRowsByKey.entrySet().stream()
                 .filter(entry -> !alreadyRegisteredKeys.contains(entry.getKey()))
@@ -199,9 +204,9 @@ public class GridSaveExecutor {
     private static class CreateRowsResult<ENTITY> {
 
         private final List<ENTITY> entities;
-        private final List<String> messages;
+        private final List<GridSaveMessage> messages;
 
-        private CreateRowsResult(List<ENTITY> entities, List<String> messages) {
+        private CreateRowsResult(List<ENTITY> entities, List<GridSaveMessage> messages) {
             this.entities = entities;
             this.messages = messages;
         }
@@ -210,7 +215,7 @@ public class GridSaveExecutor {
             return entities;
         }
 
-        private List<String> getMessages() {
+        private List<GridSaveMessage> getMessages() {
             return messages;
         }
     }

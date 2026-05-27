@@ -136,6 +136,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.ArrayList;
 import java.util.List;
+import com.example.admin.common.grid.GridSaveMessage;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -206,7 +207,7 @@ public class UserRoleMenuGridSaveResponse {
     private int createdCount;
     private int updatedCount;
     private int deletedCount;
-    private List<String> messages;
+    private List<GridSaveMessage> messages;
 }
 ```
 
@@ -358,7 +359,12 @@ public class UserRoleMenuService {
   "updatedCount": 0,
   "deletedCount": 0,
   "messages": [
-    "id=AdminUserRoleMenuId(userId=1, roleId=10, menuId=100)는 이미 등록된 데이터입니다."
+    {
+      "operation": "CREATE",
+      "result": "SKIPPED",
+      "key": "AdminUserRoleMenuId(userId=1, roleId=10, menuId=100)",
+      "message": "이미 등록된 데이터입니다."
+    }
   ]
 }
 ```
