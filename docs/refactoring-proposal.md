@@ -486,6 +486,61 @@ public class JpaAdminMenuService {
 
 이 기준은 MyBatis insert에서 `case`로 값을 골라 넣던 로직을 옮길 때도 중요합니다. 조건 판단에 DB 조회가 필요하면 service에서 먼저 조회하고, mapper에는 조회 결과가 반영된 command만 넘깁니다.
 
+조회된 데이터의 값을 여러 개 넣어야 하는 경우도 service에서 조회 후 command에 채워 넣습니다. 예를 들어 화면에서는 `parentMenuCode`만 넘어오지만, 저장할 때는 상위 메뉴의 `id`, `depth`, `menuPath`를 이용해야 하는 경우입니다.
+
+Command:
+
+```java
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class MenuSaveCommand {
+
+    private Long id;
+    private String menuCode;
+    private String menuName;
+    private Long parentMenuId;
+    private int depth;
+    private String menuPath;
+}
+```
+
+Service:
+
+```java
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class JpaAdminMenuService {
+
+    private final AdminMenuRepository menuRepository;
+    private final MenuMapper menuMapper;
+
+    @Transactional
+    public void createWithParentInfo(MenuGridRow row) {
+        MenuSaveCommand command = menuMapper.toCommand(row);
+
+        if (row.getParentMenuCode() != null) {
+            AdminMenu parentMenu = menuRepository.findByMenuCode(row.getParentMenuCode())
+                    .orElseThrow(() -> new BadRequestException("존재하지 않는 상위 메뉴입니다."));
+
+            command.setParentMenuId(parentMenu.getId());
+            command.setDepth(parentMenu.getDepth() + 1);
+            command.setMenuPath(parentMenu.getMenuPath() + "/" + command.getMenuCode());
+        } else {
+            command.setDepth(1);
+            command.setMenuPath(command.getMenuCode());
+        }
+
+        AdminMenu menu = AdminMenu.create(command);
+        menuRepository.save(menu);
+    }
+}
+```
+
+이 방식의 핵심은 mapper가 DB를 모르고, service가 조회 결과를 이용해 저장 command를 완성한다는 점입니다. 조회한 엔티티의 값을 그대로 복사하는 수준이면 위처럼 service에서 채우고, 계산 규칙이 모든 저장 경로에서 동일하게 적용되어야 한다면 일부 계산은 Entity의 `create(...)`로 옮기는 것도 가능합니다.
+
 ### 3. Entity가 항상 지켜야 하는 기본값 또는 상태값
 
 어떤 API로 저장하든 항상 지켜야 하는 기본값은 Entity 안에 둡니다. 예를 들어 등록 시 기본 사용 여부가 `true`여야 하거나, 삭제는 실제 delete가 아니라 상태값을 `DELETED`로 바꾸는 규칙이라면 Entity 메서드가 담당하는 편이 안전합니다.
