@@ -317,18 +317,20 @@ JPA Entity와 DTO 변환은 도메인별 mapper가 담당합니다.
 
 ```java
 @Mapper(componentModel = "spring")
-public interface MenuMapper {
+public interface MenuMapper extends BaseMapper<MenuGridRow, AdminMenu> {
 
+    @Override
     default AdminMenu toEntity(MenuGridRow request) {
         // DTO -> Entity
     }
 
-    default void updateEntity(@MappingTarget AdminMenu menu, MenuRequest request) {
-        // 일반 수정 요청 -> managed entity 변경
-    }
-
+    @Override
     default void updateEntity(@MappingTarget AdminMenu menu, MenuGridRow row) {
         // grid 수정 row -> managed entity 변경
+    }
+
+    default void updateEntity(@MappingTarget AdminMenu menu, MenuRequest request) {
+        // 일반 수정 요청 -> managed entity 변경
     }
 
     default MenuResponse toResponse(AdminMenu menu) {
@@ -339,6 +341,8 @@ public interface MenuMapper {
 
 mapper 명명 규칙:
 
+- `BaseMapper<D, E>`를 상속하는 경우 같은 시그니처의 메서드에는 `@Override`를 붙입니다.
+- DTO 타입이 달라지는 메서드는 override가 아니라 overload이므로 `@Override`를 붙이지 않습니다.
 - `toEntity`: 등록 DTO를 Entity로 변환합니다.
 - `updateEntity`: 수정 DTO 값을 managed entity에 반영합니다.
 - `toResponse`: Entity를 응답 DTO로 변환합니다.

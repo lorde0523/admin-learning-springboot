@@ -211,16 +211,18 @@ Mapper:
 
 ```java
 @Mapper(componentModel = "spring")
-public interface MenuMapper {
+public interface MenuMapper extends BaseMapper<MenuGridRow, AdminMenu> {
 
     MenuSaveCommand toCommand(MenuGridRow row);
 
     MenuResponse toResponse(AdminMenu menu);
 
+    @Override
     default AdminMenu toEntity(MenuGridRow row) {
         return AdminMenu.create(toCommand(row));
     }
 
+    @Override
     default void updateEntity(@MappingTarget AdminMenu menu, MenuGridRow row) {
         menu.update(toCommand(row));
     }
@@ -405,4 +407,3 @@ Store -> MyBatis 복잡 조회
 ```
 
 이렇게 가면 MapStruct의 장점인 반복 필드 매핑 제거를 얻으면서도, Entity의 상태 변경 규칙은 유지할 수 있습니다.
-

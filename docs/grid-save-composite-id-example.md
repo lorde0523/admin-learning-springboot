@@ -230,6 +230,7 @@ public interface AdminUserRoleMenuRepository
 ```java
 package com.example.admin.userrole.mapper;
 
+import com.example.admin.common.mapper.BaseMapper;
 import com.example.admin.userrole.dto.adminuserrolemenu.UserRoleMenuGridRow;
 import com.example.admin.userrole.entity.AdminUserRoleMenu;
 import com.example.admin.userrole.entity.AdminUserRoleMenuId;
@@ -237,12 +238,14 @@ import org.mapstruct.Mapper;
 import org.mapstruct.MappingTarget;
 
 @Mapper(componentModel = "spring")
-public interface UserRoleMenuMapper {
+public interface UserRoleMenuMapper extends BaseMapper<UserRoleMenuGridRow, AdminUserRoleMenu> {
 
+    @Override
     default AdminUserRoleMenu toEntity(UserRoleMenuGridRow row) {
         return AdminUserRoleMenu.create(toId(row), row.getEnabled(), row.getSortOrder());
     }
 
+    @Override
     default void updateEntity(@MappingTarget AdminUserRoleMenu entity, UserRoleMenuGridRow row) {
         entity.update(row.getEnabled(), row.getSortOrder());
     }

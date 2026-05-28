@@ -1,5 +1,6 @@
 package com.example.admin.menu.mapper;
 
+import com.example.admin.common.mapper.BaseMapper;
 import com.example.admin.menu.dto.adminmenu.MenuGridRow;
 import com.example.admin.menu.dto.adminmenu.MenuRequest;
 import com.example.admin.menu.dto.adminmenu.MenuResponse;
@@ -8,8 +9,9 @@ import org.mapstruct.Mapper;
 import org.mapstruct.MappingTarget;
 
 @Mapper(componentModel = "spring")
-public interface MenuMapper {
+public interface MenuMapper extends BaseMapper<MenuGridRow, AdminMenu> {
 
+    @Override
     default AdminMenu toEntity(MenuGridRow request) {
         return AdminMenu.create(
                 request.getId(),
@@ -20,6 +22,7 @@ public interface MenuMapper {
                 request.getEnabled());
     }
 
+    @Override
     default void updateEntity(@MappingTarget AdminMenu menu, MenuGridRow row) {
         updateEntity(menu, (MenuRequest) row);
     }
