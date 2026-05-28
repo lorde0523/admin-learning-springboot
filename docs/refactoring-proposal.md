@@ -371,6 +371,207 @@ mapper default method -> Entity.create(command)
 service -> Entity.create(mapper.toCommand(dto))
 ```
 
+## 값 결정 위치별 예시
+
+저장 전에 어떤 값을 어디서 결정해야 하는지는 다음 기준으로 나누는 편이 좋습니다.
+
+```text
+DTO 값만 보고 결정 가능 -> mapper 또는 command 변환
+DB 조회가 필요함 -> service
+Entity가 항상 지켜야 하는 기본값/상태값 -> entity create/update 또는 @PrePersist
+DB default를 그대로 써야 함 -> DB default 유지 + JPA에서는 값을 세팅하지 않도록 설계
+```
+
+### 1. DTO 값만 보고 결정 가능한 경우
+
+요청 DTO 안의 값만으로 결정할 수 있는 값은 mapper 또는 command 변환에서 처리합니다. 예를 들어 화면에서 넘어온 메뉴 코드를 trim 하고 대문자로 바꾸거나, Y/N 값을 Boolean으로 바꾸는 정도는 DB 조회가 필요 없습니다.
+
+DTO:
+
+```java
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class MenuGridRow {
+
+    private Long id;
+    private String menuCode;
+    private String menuName;
+    private String enabledYn;
+}
+```
+
+Command:
+
+```java
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class MenuSaveCommand {
+
+    private Long id;
+    private String menuCode;
+    private String menuName;
+    private Boolean enabled;
+}
+```
+
+Mapper:
+
+```java
+@Mapper(componentModel = "spring")
+public interface MenuMapper {
+
+    @Mapping(target = "menuCode", expression = "java(normalizeMenuCode(row.getMenuCode()))")
+    @Mapping(target = "enabled", expression = "java(toBoolean(row.getEnabledYn()))")
+    MenuSaveCommand toCommand(MenuGridRow row);
+
+    default String normalizeMenuCode(String menuCode) {
+        if (menuCode == null) {
+            return null;
+        }
+        return menuCode.trim().toUpperCase();
+    }
+
+    default Boolean toBoolean(String enabledYn) {
+        if (enabledYn == null) {
+            return null;
+        }
+        return "Y".equalsIgnoreCase(enabledYn.trim());
+    }
+
+    default AdminMenu toEntity(MenuGridRow row) {
+        return AdminMenu.create(toCommand(row));
+    }
+}
+```
+
+이런 처리는 service에 두면 저장 흐름이 길어지고, 여러 API에서 같은 보정이 반복될 가능성이 큽니다.
+
+### 2. DB 조회가 필요한 경우
+
+다른 테이블의 값이나 현재 DB 상태를 봐야 결정할 수 있는 값은 service에서 처리합니다. mapper 안에서 repository를 호출하지 않습니다.
+
+예를 들어 화면에서는 `parentMenuCode`만 넘어오고, 실제 Entity에는 `parentMenuId`를 넣어야 하는 경우입니다.
+
+```java
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class JpaAdminMenuService {
+
+    private final AdminMenuRepository menuRepository;
+    private final MenuMapper menuMapper;
+
+    @Transactional
+    public void create(MenuGridRow row) {
+        Long parentMenuId = null;
+
+        if (row.getParentMenuCode() != null) {
+            parentMenuId = menuRepository.findByMenuCode(row.getParentMenuCode())
+                    .map(AdminMenu::getId)
+                    .orElseThrow(() -> new BadRequestException("존재하지 않는 상위 메뉴입니다."));
+        }
+
+        MenuSaveCommand command = menuMapper.toCommand(row);
+        command.setParentMenuId(parentMenuId);
+
+        AdminMenu menu = AdminMenu.create(command);
+        menuRepository.save(menu);
+    }
+}
+```
+
+이 기준은 MyBatis insert에서 `case`로 값을 골라 넣던 로직을 옮길 때도 중요합니다. 조건 판단에 DB 조회가 필요하면 service에서 먼저 조회하고, mapper에는 조회 결과가 반영된 command만 넘깁니다.
+
+### 3. Entity가 항상 지켜야 하는 기본값 또는 상태값
+
+어떤 API로 저장하든 항상 지켜야 하는 기본값은 Entity 안에 둡니다. 예를 들어 등록 시 기본 사용 여부가 `true`여야 하거나, 삭제는 실제 delete가 아니라 상태값을 `DELETED`로 바꾸는 규칙이라면 Entity 메서드가 담당하는 편이 안전합니다.
+
+```java
+@Entity
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class AdminMenu {
+
+    @Id
+    private Long id;
+
+    private String menuName;
+
+    private Boolean enabled;
+
+    private String status;
+
+    public static AdminMenu create(MenuSaveCommand command) {
+        AdminMenu menu = new AdminMenu();
+        menu.id = command.getId();
+        menu.menuName = command.getMenuName();
+        menu.enabled = command.getEnabled();
+        menu.status = "ACTIVE";
+        return menu;
+    }
+
+    public void update(MenuSaveCommand command) {
+        this.menuName = command.getMenuName();
+        this.enabled = command.getEnabled();
+    }
+
+    public void delete() {
+        this.status = "DELETED";
+        this.enabled = false;
+    }
+
+    @PrePersist
+    private void prePersist() {
+        if (this.enabled == null) {
+            this.enabled = true;
+        }
+        if (this.status == null) {
+            this.status = "ACTIVE";
+        }
+    }
+}
+```
+
+`@PrePersist`는 누락 방지용으로 좋지만, 업무적으로 의미가 큰 값은 `create(...)`에서 명시적으로 채우는 편이 코드 흐름을 읽기 쉽습니다.
+
+### 4. DB default를 그대로 써야 하는 경우
+
+DB의 `default` 값을 그대로 사용해야 한다면 JPA에서 해당 컬럼 값을 넣지 않도록 설계해야 합니다. 단순히 Java 필드를 `null`로 두는 것만으로는 insert SQL에 null이 포함되어 DB default가 적용되지 않을 수 있습니다.
+
+가장 단순한 방법은 JPA가 insert/update 대상에서 해당 컬럼을 제외하는 것입니다.
+
+```java
+@Entity
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class AdminMenu {
+
+    @Id
+    private Long id;
+
+    private String menuName;
+
+    @Column(insertable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @Column(insertable = false)
+    private String createdBy;
+
+    public static AdminMenu create(MenuSaveCommand command) {
+        AdminMenu menu = new AdminMenu();
+        menu.id = command.getId();
+        menu.menuName = command.getMenuName();
+        return menu;
+    }
+}
+```
+
+이 방식은 DB default를 믿고 가는 대신, JPA Entity 저장 직후에는 해당 값이 메모리 객체에 바로 반영되지 않을 수 있습니다. 저장 후 응답에 default 값을 즉시 내려야 한다면 flush 이후 재조회하거나, 애초에 Entity에서 값을 세팅하는 방향을 선택하는 것이 좋습니다.
+
 ## 추천 적용 순서
 
 1. `MenuResponse.from(...)` 제거 방향 정리
