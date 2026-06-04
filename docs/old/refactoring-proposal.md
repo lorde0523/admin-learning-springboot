@@ -25,52 +25,51 @@
 
 ## 리팩토링 후보
 
-### 1. GridSaveExecutor 파라미터 객체화
+### 1. GridSaveExecutor 작업별 메서드 분리
 
-현재 `GridSaveExecutor.save(...)`는 인자가 많습니다.
+기존 `GridSaveExecutor.save(...)`처럼 등록, 수정, 삭제를 한 메서드에 모두 넘기면 인자가 많습니다.
 
 ```java
-gridSaveExecutor.save(
+gridSaveExecutor.validateRequestConflicts(
         createdRows,
         updatedRows,
-        deletedIds,
-        repository,
+        deletedRows,
         createKeyReader,
         updateKeyReader,
-        entityKeyReader,
-        createMapper,
-        updateApplier,
-        missingResourceMessage,
-        failureMode);
+        deleteKeyReader);
+
+GridSaveResult result = GridSaveResult.empty()
+        .merge(gridSaveExecutor.delete(
+                deletedRows,
+                repository,
+                deleteKeyReader,
+                entityKeyReader,
+                missingResourceMessage,
+                failureMode))
+        .merge(gridSaveExecutor.create(
+                createdRows,
+                repository,
+                createKeyReader,
+                entityKeyReader,
+                createMapper,
+                failureMode))
+        .merge(gridSaveExecutor.update(
+                updatedRows,
+                repository,
+                updateKeyReader,
+                entityKeyReader,
+                updateApplier,
+                missingResourceMessage,
+                failureMode));
 ```
 
-컬럼 수나 도메인이 늘어나는 것과 별개로 호출부가 길어져 가독성이 떨어질 수 있습니다.
-
-제안:
-
-```java
-GridSaveCommand<Id, CreateRow, UpdateRow, Entity> command =
-        GridSaveCommand.<Id, CreateRow, UpdateRow, Entity>builder()
-                .createdRows(request.getCreatedRows())
-                .updatedRows(request.getUpdatedRows())
-                .deletedIds(request.getDeletedIds())
-                .repository(repository)
-                .createKeyReader(mapper::toId)
-                .updateKeyReader(mapper::toId)
-                .entityKeyReader(Entity::getId)
-                .createMapper(mapper::toEntity)
-                .updateApplier(mapper::updateEntity)
-                .failureMode(GridSaveFailureMode.SKIP_AND_MESSAGE)
-                .missingResourceMessage("존재하지 않는 데이터가 포함되어 있습니다.")
-                .build();
-
-GridSaveResult result = gridSaveExecutor.save(command);
-```
+API는 하나로 유지하되 service 내부에서 필요한 작업만 호출하는 방향이 더 명확합니다.
 
 효과:
-- 호출부 의미가 명확해집니다.
-- create/update key reader가 왜 2개인지 이름으로 드러납니다.
-- 옵션이 늘어나도 메서드 시그니처가 계속 길어지지 않습니다.
+- 저장 순서가 service에서 명확하게 보입니다.
+- update만 들어온 요청은 update executor만 호출할 수 있습니다.
+- delete는 ID 목록뿐 아니라 삭제 DTO 목록도 받을 수 있습니다.
+- create/update/delete 충돌 검증은 저장 전에 한 번 수행합니다.
 
 우선순위:
 - 높음
@@ -639,8 +638,8 @@ public class AdminMenu {
    - `{Domain}SaveCommand`
    - `{Domain}UpdateCommand` 또는 하나의 `{Domain}Values`
 
-4. `GridSaveCommand` 도입
-   - `GridSaveExecutor.save(...)` 긴 파라미터 정리
+4. `GridSaveExecutor` 작업별 메서드 분리
+   - `validateRequestConflicts`, `create`, `update`, `delete` 기준으로 호출부 정리
 
 5. Service 생성자 주입 Lombok 통일
    - `@RequiredArgsConstructor`

@@ -12,6 +12,9 @@ import com.example.admin.menu.entity.AdminMenu;
 import com.example.admin.menu.mapper.MenuMapper;
 import com.example.admin.menu.repository.AdminMenuRepository;
 import java.util.List;
+import java.util.function.Function;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -50,19 +53,52 @@ public class JpaAdminMenuService {
                 .toList();
     }
 
+    public Page<MenuResponse> searchPage(String nameKeyword, Pageable pageable) {
+        Page<AdminMenu> menus = StringUtils.hasText(nameKeyword)
+                ? menuRepository.findByMenuNameContainingIgnoreCase(nameKeyword, pageable)
+                : menuRepository.findAll(pageable);
+        return menus.map(menuMapper::toResponse);
+    }
+
     @Transactional
     public MenuGridSaveResponse saveGrid(MenuGridSaveRequest request) {
-        GridSaveResult result = gridSaveExecutor.save(
+        gridSaveExecutor.validateRequestConflicts(
                 request.getCreatedRows(),
                 request.getUpdatedRows(),
                 request.getDeletedIds(),
-                menuRepository,
                 MenuGridRow::getId,
                 MenuGridRow::getId,
-                AdminMenu::getId,
-                menuMapper::toEntity,
-                menuMapper::updateEntity,
-                "존재하지 않는 메뉴가 포함되어 있습니다.");
+                Function.identity());
+
+        GridSaveResult result = GridSaveResult.empty();
+
+        if (hasRows(request.getDeletedIds())) {
+            result = result.merge(gridSaveExecutor.delete(
+                    request.getDeletedIds(),
+                    menuRepository,
+                    Function.identity(),
+                    AdminMenu::getId,
+                    "존재하지 않는 메뉴가 포함되어 있습니다."));
+        }
+
+        if (hasRows(request.getCreatedRows())) {
+            result = result.merge(gridSaveExecutor.create(
+                    request.getCreatedRows(),
+                    menuRepository,
+                    MenuGridRow::getId,
+                    AdminMenu::getId,
+                    menuMapper::toEntity));
+        }
+
+        if (hasRows(request.getUpdatedRows())) {
+            result = result.merge(gridSaveExecutor.update(
+                    request.getUpdatedRows(),
+                    menuRepository,
+                    MenuGridRow::getId,
+                    AdminMenu::getId,
+                    menuMapper::updateEntity,
+                    "존재하지 않는 메뉴가 포함되어 있습니다."));
+        }
 
         return MenuGridSaveResponse.builder()
                 .createdCount(result.getCreatedCount())
@@ -75,6 +111,10 @@ public class JpaAdminMenuService {
     private AdminMenu menu(Long id) {
         return menuRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("메뉴를 찾을 수 없습니다. id=" + id));
+    }
+
+    private boolean hasRows(List<?> rows) {
+        return rows != null && !rows.isEmpty();
     }
 }
 

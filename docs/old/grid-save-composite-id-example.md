@@ -288,20 +288,36 @@ public class UserRoleMenuService {
 
     @Transactional
     public UserRoleMenuGridSaveResponse saveGrid(UserRoleMenuGridSaveRequest request) {
-        GridSaveResult result = gridSaveExecutor.save(
+        gridSaveExecutor.validateRequestConflicts(
                 request.getCreatedRows(),
                 request.getUpdatedRows(),
-                request.getDeletedIds().stream()
-                        .map(this::toId)
-                        .toList(),
-                repository,
+                request.getDeletedIds(),
                 mapper::toId,
                 mapper::toId,
-                AdminUserRoleMenu::getId,
-                mapper::toEntity,
-                mapper::updateEntity,
-                "존재하지 않는 사용자 권한 메뉴 매핑이 포함되어 있습니다.",
-                GridSaveFailureMode.SKIP_AND_MESSAGE);
+                this::toId);
+
+        GridSaveResult result = GridSaveResult.empty()
+                .merge(gridSaveExecutor.delete(
+                        request.getDeletedIds(),
+                        repository,
+                        this::toId,
+                        AdminUserRoleMenu::getId,
+                        "존재하지 않는 사용자 권한 메뉴 매핑이 포함되어 있습니다."))
+                .merge(gridSaveExecutor.create(
+                        request.getCreatedRows(),
+                        repository,
+                        mapper::toId,
+                        AdminUserRoleMenu::getId,
+                        mapper::toEntity,
+                        GridSaveFailureMode.SKIP_AND_MESSAGE))
+                .merge(gridSaveExecutor.update(
+                        request.getUpdatedRows(),
+                        repository,
+                        mapper::toId,
+                        AdminUserRoleMenu::getId,
+                        mapper::updateEntity,
+                        "존재하지 않는 사용자 권한 메뉴 매핑이 포함되어 있습니다.",
+                        GridSaveFailureMode.SKIP_AND_MESSAGE));
 
         return UserRoleMenuGridSaveResponse.builder()
                 .createdCount(result.getCreatedCount())

@@ -9,6 +9,8 @@ Java 21, Spring Boot, Oracle, JPA, MyBatis 3.x를 함께 다루는 관리자 예
 - QueryDSL은 사용하지 않습니다.
 - Entity와 DTO는 `record`를 사용하지 않고 Lombok class로 작성합니다.
 
+세부 정책은 [관리자 데이터 변경과 Grid 저장 기준](docs/admin-data-mutation-grid-policy.md)을 따릅니다. 이 문서는 validation, JPA/MyBatis 경계, CRUD 정책, ag-Grid 저장, 복합 ID, `rows + rowStatus` 어댑터 방향을 하나로 묶은 현재 기준입니다.
+
 ## 실행
 
 ```powershell
@@ -47,10 +49,12 @@ com.example.admin
 | 역할 등록/수정/삭제 | `/api/jpa/roles` | JPA |
 | 역할-메뉴 저장 | `PUT /api/jpa/roles/{id}/menus` | JPA |
 | 메뉴 조회 | `GET /api/jpa/menus`, `GET /api/jpa/menus/{id}`, `GET /api/jpa/menus/children` | JPA |
+| 메뉴 페이징 조회 | `GET /api/jpa/menus/page` | JPA |
+| 메뉴 페이징 조회 | `GET /api/mybatis/menus/page` | MyBatis select only |
 | 메뉴 ag-Grid 저장 | `POST /api/jpa/menus/grid-save` | JPA |
 | 복잡 조회 | MyBatis store | MyBatis select only |
 
-MyBatis의 기존 쓰기 API와 쓰기 SQL은 제거했습니다. `src/main/resources/mybatis`에는 조회 SQL만 남아야 합니다.
+MyBatis의 기존 쓰기 API와 쓰기 SQL은 제거했습니다. `src/main/resources/mybatis`에는 조회 SQL만 남아야 합니다. MyBatis controller/service는 조회 전용 API에만 사용합니다.
 
 메뉴 도메인은 조회와 ag-Grid 저장 예제로 둡니다. 메뉴의 등록, 수정, 삭제는 단건 API를 따로 열지 않고 `POST /api/jpa/menus/grid-save`에서 처리합니다. 사용자와 역할 도메인은 기존처럼 등록, 수정, 삭제, 조회 API를 모두 유지합니다.
 
@@ -217,6 +221,8 @@ Criteria API는 문자열 JPQL보다 장황하지만 동적 조건을 코드로 
 6. 처리 건수를 응답합니다.
 
 이 방식은 ag-Grid의 delta 모델과 잘 맞고, JPA auditing과 entity lifecycle을 그대로 사용할 수 있습니다.
+
+프론트엔드가 `rows + rowStatus` 단일 배열 형태를 보내야 하는 경우에도 기존 `GridSaveExecutor`를 대체하지 않습니다. 별도 `GridRowSeparator` 같은 어댑터에서 `createdRows`, `updatedRows`, `deletedIds`로 분리한 뒤 현재 저장 흐름을 재사용합니다.
 
 ## ag-Grid 저장 명명 규칙
 
@@ -385,17 +391,43 @@ saveGrid
 ```java
 @Transactional
 public MenuGridSaveResponse saveGrid(MenuGridSaveRequest request) {
-    GridSaveResult result = gridSaveExecutor.save(
+    gridSaveExecutor.validateRequestConflicts(
             request.getCreatedRows(),
             request.getUpdatedRows(),
             request.getDeletedIds(),
-            menuRepository,
             MenuGridRow::getId,
             MenuGridRow::getId,
-            AdminMenu::getId,
-            menuMapper::toEntity,
-            menuMapper::updateEntity,
-            "존재하지 않는 메뉴가 포함되어 있습니다.");
+            Function.identity());
+
+    GridSaveResult result = GridSaveResult.empty();
+
+    if (hasRows(request.getDeletedIds())) {
+        result = result.merge(gridSaveExecutor.delete(
+                request.getDeletedIds(),
+                menuRepository,
+                Function.identity(),
+                AdminMenu::getId,
+                "존재하지 않는 메뉴가 포함되어 있습니다."));
+    }
+
+    if (hasRows(request.getCreatedRows())) {
+        result = result.merge(gridSaveExecutor.create(
+                request.getCreatedRows(),
+                menuRepository,
+                MenuGridRow::getId,
+                AdminMenu::getId,
+                menuMapper::toEntity));
+    }
+
+    if (hasRows(request.getUpdatedRows())) {
+        result = result.merge(gridSaveExecutor.update(
+                request.getUpdatedRows(),
+                menuRepository,
+                MenuGridRow::getId,
+                AdminMenu::getId,
+                menuMapper::updateEntity,
+                "존재하지 않는 메뉴가 포함되어 있습니다."));
+    }
 
     return MenuGridSaveResponse.builder()
             .createdCount(result.getCreatedCount())
@@ -440,56 +472,42 @@ GridSaveResult
 
 공통 grid 저장은 단일 ID와 `@EmbeddedId` 같은 복합 ID를 모두 같은 방식으로 처리합니다. 핵심은 각 row와 entity에서 비교 가능한 key 객체를 만들어 넘기는 것입니다.
 
-단일 ID 예시:
+단일 ID create 예시:
 
 ```java
-gridSaveExecutor.save(
+gridSaveExecutor.create(
         request.getCreatedRows(),
-        request.getUpdatedRows(),
-        request.getDeletedIds(),
         menuRepository,
         MenuGridRow::getId,
-        MenuGridRow::getId,
         AdminMenu::getId,
-        menuMapper::toEntity,
-        menuMapper::updateEntity,
-        "존재하지 않는 메뉴가 포함되어 있습니다.");
+        menuMapper::toEntity);
 ```
 
-엄격 예외 모드 예시:
+단일 ID update 엄격 예외 모드 예시:
 
 ```java
-gridSaveExecutor.save(
-        request.getCreatedRows(),
+gridSaveExecutor.update(
         request.getUpdatedRows(),
-        request.getDeletedIds(),
         menuRepository,
         MenuGridRow::getId,
-        MenuGridRow::getId,
         AdminMenu::getId,
-        menuMapper::toEntity,
         menuMapper::updateEntity,
         "존재하지 않는 메뉴가 포함되어 있습니다.",
         GridSaveFailureMode.STRICT_EXCEPTION);
 ```
 
-복합 ID 예시:
+복합 ID delete 예시:
 
 ```java
-gridSaveExecutor.save(
-        request.getCreatedRows(),
-        request.getUpdatedRows(),
+gridSaveExecutor.delete(
         request.getDeletedIds(),
         userRoleRepository,
         row -> new AdminUserRoleId(row.getUserId(), row.getRoleId()),
-        row -> new AdminUserRoleId(row.getUserId(), row.getRoleId()),
         AdminUserRole::getId,
-        userRoleMapper::toEntity,
-        userRoleMapper::updateEntity,
         "존재하지 않는 사용자 권한 매핑이 포함되어 있습니다.");
 ```
 
-3개 이상의 key 필드를 가진 `@EmbeddedId` 예시는 [Grid Save 복합 ID 예제](docs/grid-save-composite-id-example.md)를 참고합니다.
+3개 이상의 key 필드를 가진 `@EmbeddedId` 예시는 [Grid Save 복합 ID 예제](docs/old/grid-save-composite-id-example.md)를 참고합니다.
 
 공통 클래스가 알지 않아야 하는 것:
 
@@ -597,7 +615,7 @@ auditor 선택 순서는 다음과 같습니다.
 ```powershell
 rg -n "public record| record " src\main\java
 rg -n "<insert|<update|<delete" src\main\resources\mybatis
-rg -n "MyBatisAdmin.*Service|MyBatisAdmin.*Controller|/api/mybatis" src
+rg -n "<insert|<update|<delete" src\main\resources\mybatis
 .\gradlew test
 ```
 
@@ -605,5 +623,5 @@ rg -n "MyBatisAdmin.*Service|MyBatisAdmin.*Controller|/api/mybatis" src
 
 - main Java source에 `record`가 없어야 합니다.
 - MyBatis XML에 쓰기 SQL이 없어야 합니다.
-- MyBatis 쓰기 Service, Controller, `/api/mybatis` endpoint가 없어야 합니다.
+- MyBatis controller/service는 조회 전용이어야 합니다.
 - 전체 테스트가 통과해야 합니다.

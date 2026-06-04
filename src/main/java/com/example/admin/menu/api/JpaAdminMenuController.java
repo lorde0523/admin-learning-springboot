@@ -6,6 +6,9 @@ import com.example.admin.menu.dto.adminmenu.MenuResponse;
 import com.example.admin.menu.service.JpaAdminMenuService;
 import jakarta.validation.Valid;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -37,6 +40,13 @@ public class JpaAdminMenuController {
     @GetMapping
     public List<MenuResponse> search(@RequestParam(required = false) String nameKeyword) {
         return menuService.search(nameKeyword);
+    }
+
+    @GetMapping("/page")
+    public Page<MenuResponse> searchPage(
+            @RequestParam(required = false) String nameKeyword,
+            @PageableDefault(size = 20, sort = {"sortOrder", "id"}) Pageable pageable) {
+        return menuService.searchPage(nameKeyword, pageable);
     }
 
     @GetMapping("/children")

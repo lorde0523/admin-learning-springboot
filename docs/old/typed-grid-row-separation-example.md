@@ -282,17 +282,34 @@ public class JpaAdminMenuService {
                         MenuTypedGridRow::getRowStatus,
                         MenuTypedGridRow::getId);
 
-        GridSaveResult result = gridSaveExecutor.save(
+        gridSaveExecutor.validateRequestConflicts(
                 rows.getCreatedRows(),
                 rows.getUpdatedRows(),
                 rows.getDeletedIds(),
-                menuRepository,
                 MenuTypedGridRow::getId,
                 MenuTypedGridRow::getId,
-                AdminMenu::getId,
-                menuMapper::toEntity,
-                menuMapper::updateEntity,
-                "존재하지 않는 메뉴가 포함되어 있습니다.");
+                Function.identity());
+
+        GridSaveResult result = GridSaveResult.empty()
+                .merge(gridSaveExecutor.delete(
+                        rows.getDeletedIds(),
+                        menuRepository,
+                        Function.identity(),
+                        AdminMenu::getId,
+                        "존재하지 않는 메뉴가 포함되어 있습니다."))
+                .merge(gridSaveExecutor.create(
+                        rows.getCreatedRows(),
+                        menuRepository,
+                        MenuTypedGridRow::getId,
+                        AdminMenu::getId,
+                        menuMapper::toEntity))
+                .merge(gridSaveExecutor.update(
+                        rows.getUpdatedRows(),
+                        menuRepository,
+                        MenuTypedGridRow::getId,
+                        AdminMenu::getId,
+                        menuMapper::updateEntity,
+                        "존재하지 않는 메뉴가 포함되어 있습니다."));
 
         return MenuGridSaveResponse.from(result);
     }
@@ -303,7 +320,7 @@ Service 흐름은 다음처럼 읽힙니다.
 
 ```text
 1. request rows를 상태별로 분리한다.
-2. 기존 GridSaveExecutor에 createdRows, updatedRows, deletedIds를 넘긴다.
+2. `GridSaveExecutor`의 create/update/delete 메서드 중 필요한 작업만 호출한다.
 3. 결과를 response로 변환한다.
 ```
 
@@ -352,9 +369,9 @@ Helper 또는 Service에 두는 것이 좋은 것:
 여러 grid API에서 재사용 -> GridRowSeparator helper 추천
 ```
 
-## save 메서드 인자 수 문제
+## 통합 save 메서드 인자 수 문제
 
-`TypedGridMutationExecutor.save(...)`처럼 모든 것을 한 메서드에 넘기면 인자가 많아질 수 있습니다.
+모든 것을 한 메서드에 넘기면 인자가 많아질 수 있습니다.
 
 ```java
 typedGridMutationExecutor.save(

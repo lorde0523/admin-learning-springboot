@@ -27,6 +27,28 @@
          ORDER BY SORT_ORDER, MENU_ID
     </select>
 
+    <select id="searchPage" resultType="com.example.admin.menu.store.MyBatisAdminMenuStore$MenuRow">
+        SELECT <include refid="menuColumns"/>
+          FROM ADMIN_MENU
+         <where>
+             <if test="nameKeyword != null and nameKeyword != ''">
+                 UPPER(MENU_NAME) LIKE '%' || UPPER(#{nameKeyword}) || '%'
+             </if>
+         </where>
+         ORDER BY SORT_ORDER, MENU_ID
+         OFFSET #{offset} ROWS FETCH NEXT #{limit} ROWS ONLY
+    </select>
+
+    <select id="countSearch" resultType="long">
+        SELECT COUNT(*)
+          FROM ADMIN_MENU
+         <where>
+             <if test="nameKeyword != null and nameKeyword != ''">
+                 UPPER(MENU_NAME) LIKE '%' || UPPER(#{nameKeyword}) || '%'
+             </if>
+         </where>
+    </select>
+
     <select id="children" resultType="com.example.admin.menu.store.MyBatisAdminMenuStore$MenuRow">
         SELECT <include refid="menuColumns"/>
           FROM ADMIN_MENU

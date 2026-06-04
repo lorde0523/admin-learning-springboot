@@ -17,6 +17,13 @@ public interface MyBatisAdminMenuStore {
 
     List<MenuRow> search(@Param("nameKeyword") String nameKeyword);
 
+    List<MenuRow> searchPage(
+            @Param("nameKeyword") String nameKeyword,
+            @Param("limit") int limit,
+            @Param("offset") long offset);
+
+    long countSearch(@Param("nameKeyword") String nameKeyword);
+
     List<MenuRow> children(Long parentMenuId);
 
     List<MenuRow> findByRoleId(Long roleId);

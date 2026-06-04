@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
-import java.util.stream.Stream;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -18,84 +17,157 @@ import org.springframework.web.server.ResponseStatusException;
 public class GridSaveExecutor {
 
     /**
-     * ag-Grid에서 전달된 등록, 수정, 삭제 row를 하나의 트랜잭션 안에서 처리하기 위한 공통 저장 진입점입니다.
+     * ag-Grid에서 전달된 등록, 수정, 삭제 row의 key 충돌을 저장 전에 검증합니다.
      *
      * <p>row 그룹이 null이면 작업 없음으로 보고 건너뜁니다. 등록, 수정, 삭제 key는 단일 ID와
-     * {@code @EmbeddedId} 같은 복합 ID를 모두 허용합니다. DB 상태와 맞지 않는 row는 메시지로 반환합니다.
+     * {@code @EmbeddedId} 같은 복합 ID를 모두 허용합니다.
      */
-    public <ID, CREATE_ROW, UPDATE_ROW, ENTITY> GridSaveResult save(
+    public <ID, CREATE_ROW, UPDATE_ROW, DELETE_ROW> void validateRequestConflicts(
             List<CREATE_ROW> createdRows,
             List<UPDATE_ROW> updatedRows,
-            List<ID> deletedIds,
-            JpaRepository<ENTITY, ID> repository,
+            List<DELETE_ROW> deletedRows,
             Function<CREATE_ROW, ID> createKeyReader,
             Function<UPDATE_ROW, ID> updateKeyReader,
+            Function<DELETE_ROW, ID> deleteKeyReader) {
+        Map<ID, CREATE_ROW> createRowsByKey = createRowsByKey(nullToEmpty(createdRows), createKeyReader);
+        Map<ID, UPDATE_ROW> updateRowsByKey = updateRowsByKey(nullToEmpty(updatedRows), updateKeyReader);
+        List<ID> validDeletedKeys = rowKeys(nullToEmpty(deletedRows), deleteKeyReader, "deletedRows");
+
+        rejectDeleteUpdateConflicts(validDeletedKeys, updateRowsByKey);
+        rejectCreateUpdateDeleteConflicts(createRowsByKey, updateRowsByKey, validDeletedKeys);
+    }
+
+    /**
+     * 등록 row를 저장합니다.
+     */
+    public <ID, CREATE_ROW, ENTITY> GridSaveResult create(
+            List<CREATE_ROW> createdRows,
+            JpaRepository<ENTITY, ID> repository,
+            Function<CREATE_ROW, ID> createKeyReader,
             Function<ENTITY, ID> entityKeyReader,
             Function<CREATE_ROW, ENTITY> createMapper,
-            BiConsumer<ENTITY, UPDATE_ROW> updateApplier,
-            String missingResourceMessage) {
-        return save(
-                createdRows,
-                updatedRows,
-                deletedIds,
+            GridSaveFailureMode failureMode) {
+        CreateRowsResult<ENTITY> createRowsResult = createRows(
+                createRowsByKey(nullToEmpty(createdRows), createKeyReader),
                 repository,
-                createKeyReader,
-                updateKeyReader,
                 entityKeyReader,
                 createMapper,
+                failureMode);
+
+        return GridSaveResult.builder()
+                .createdCount(createRowsResult.getEntities().size())
+                .updatedCount(0)
+                .deletedCount(0)
+                .messages(createRowsResult.getMessages())
+                .build();
+    }
+
+    /**
+     * 등록 row를 기본 skip message 방식으로 저장합니다.
+     */
+    public <ID, CREATE_ROW, ENTITY> GridSaveResult create(
+            List<CREATE_ROW> createdRows,
+            JpaRepository<ENTITY, ID> repository,
+            Function<CREATE_ROW, ID> createKeyReader,
+            Function<ENTITY, ID> entityKeyReader,
+            Function<CREATE_ROW, ENTITY> createMapper) {
+        return create(
+                createdRows,
+                repository,
+                createKeyReader,
+                entityKeyReader,
+                createMapper,
+                GridSaveFailureMode.SKIP_AND_MESSAGE);
+    }
+
+    /**
+     * 수정 row를 저장합니다.
+     */
+    public <ID, UPDATE_ROW, ENTITY> GridSaveResult update(
+            List<UPDATE_ROW> updatedRows,
+            JpaRepository<ENTITY, ID> repository,
+            Function<UPDATE_ROW, ID> updateKeyReader,
+            Function<ENTITY, ID> entityKeyReader,
+            BiConsumer<ENTITY, UPDATE_ROW> updateApplier,
+            String missingResourceMessage,
+            GridSaveFailureMode failureMode) {
+        UpdateRowsResult<ENTITY> updateRowsResult = updateRows(
+                updateRowsByKey(nullToEmpty(updatedRows), updateKeyReader),
+                repository,
+                entityKeyReader,
+                updateApplier,
+                missingResourceMessage,
+                failureMode);
+
+        return GridSaveResult.builder()
+                .createdCount(0)
+                .updatedCount(updateRowsResult.getEntities().size())
+                .deletedCount(0)
+                .messages(updateRowsResult.getMessages())
+                .build();
+    }
+
+    /**
+     * 수정 row를 기본 skip message 방식으로 저장합니다.
+     */
+    public <ID, UPDATE_ROW, ENTITY> GridSaveResult update(
+            List<UPDATE_ROW> updatedRows,
+            JpaRepository<ENTITY, ID> repository,
+            Function<UPDATE_ROW, ID> updateKeyReader,
+            Function<ENTITY, ID> entityKeyReader,
+            BiConsumer<ENTITY, UPDATE_ROW> updateApplier,
+            String missingResourceMessage) {
+        return update(
+                updatedRows,
+                repository,
+                updateKeyReader,
+                entityKeyReader,
                 updateApplier,
                 missingResourceMessage,
                 GridSaveFailureMode.SKIP_AND_MESSAGE);
     }
 
     /**
-     * 저장 실패 처리 방식을 선택해서 실행합니다.
-     *
-     * <p>{@link GridSaveFailureMode#SKIP_AND_MESSAGE}는 이미 존재하는 등록 row, 존재하지 않는 수정/삭제 key를
-     * 예외로 처리하지 않고 건너뛴 뒤 메시지로 반환합니다. {@link GridSaveFailureMode#STRICT_EXCEPTION}는
-     * 해당 상황을 예외로 처리해 전체 저장을 중단합니다.
+     * 삭제 row 또는 삭제 key 목록을 저장합니다. 삭제 대상이 DTO인 경우 deleteKeyReader로 key를 추출합니다.
      */
-    public <ID, CREATE_ROW, UPDATE_ROW, ENTITY> GridSaveResult save(
-            List<CREATE_ROW> createdRows,
-            List<UPDATE_ROW> updatedRows,
-            List<ID> deletedIds,
+    public <ID, DELETE_ROW, ENTITY> GridSaveResult delete(
+            List<DELETE_ROW> deletedRows,
             JpaRepository<ENTITY, ID> repository,
-            Function<CREATE_ROW, ID> createKeyReader,
-            Function<UPDATE_ROW, ID> updateKeyReader,
+            Function<DELETE_ROW, ID> deleteKeyReader,
             Function<ENTITY, ID> entityKeyReader,
-            Function<CREATE_ROW, ENTITY> createMapper,
-            BiConsumer<ENTITY, UPDATE_ROW> updateApplier,
             String missingResourceMessage,
             GridSaveFailureMode failureMode) {
-
-        List<ID> validDeletedKeys = uniqueKeys(nullToEmpty(deletedIds), "deletedIds");
-        Map<ID, CREATE_ROW> createRowsByKey = createRowsByKey(nullToEmpty(createdRows), createKeyReader);
-        Map<ID, UPDATE_ROW> updateRowsByKey = updateRowsByKey(nullToEmpty(updatedRows), updateKeyReader);
-        rejectDeleteUpdateConflicts(validDeletedKeys, updateRowsByKey);
-        rejectCreateUpdateDeleteConflicts(createRowsByKey, updateRowsByKey, validDeletedKeys);
-
-        DeleteRowsResult deleteRowsResult =
-                deleteRows(validDeletedKeys, repository, entityKeyReader, missingResourceMessage, failureMode);
-        CreateRowsResult<ENTITY> createRowsResult =
-                createRows(createRowsByKey, repository, entityKeyReader, createMapper, failureMode);
-        UpdateRowsResult<ENTITY> updateRowsResult =
-                updateRows(
-                        updateRowsByKey,
-                        repository,
-                        entityKeyReader,
-                        updateApplier,
-                        missingResourceMessage,
-                        failureMode);
+        DeleteRowsResult deleteRowsResult = deleteRows(
+                rowKeys(nullToEmpty(deletedRows), deleteKeyReader, "deletedRows"),
+                repository,
+                entityKeyReader,
+                missingResourceMessage,
+                failureMode);
 
         return GridSaveResult.builder()
-                .createdCount(createRowsResult.getEntities().size())
-                .updatedCount(updateRowsResult.getEntities().size())
+                .createdCount(0)
+                .updatedCount(0)
                 .deletedCount(deleteRowsResult.getDeletedCount())
-                .messages(mergeMessages(
-                        createRowsResult.getMessages(),
-                        updateRowsResult.getMessages(),
-                        deleteRowsResult.getMessages()))
+                .messages(deleteRowsResult.getMessages())
                 .build();
+    }
+
+    /**
+     * 삭제 row 또는 삭제 key 목록을 기본 skip message 방식으로 저장합니다.
+     */
+    public <ID, DELETE_ROW, ENTITY> GridSaveResult delete(
+            List<DELETE_ROW> deletedRows,
+            JpaRepository<ENTITY, ID> repository,
+            Function<DELETE_ROW, ID> deleteKeyReader,
+            Function<ENTITY, ID> entityKeyReader,
+            String missingResourceMessage) {
+        return delete(
+                deletedRows,
+                repository,
+                deleteKeyReader,
+                entityKeyReader,
+                missingResourceMessage,
+                GridSaveFailureMode.SKIP_AND_MESSAGE);
     }
 
     /**
@@ -106,11 +178,16 @@ public class GridSaveExecutor {
     }
 
     /**
-     * 삭제 key 목록처럼 row 객체 없이 key만 넘어오는 목록의 null과 중복을 검증합니다.
+     * row 목록에서 key를 추출하면서 null row, null key, 중복 key를 검증합니다.
      */
-    private <ID> List<ID> uniqueKeys(List<ID> keys, String fieldName) {
+    private <ID, ROW> List<ID> rowKeys(List<ROW> rows, Function<ROW, ID> keyReader, String fieldName) {
         Set<ID> uniqueKeys = new LinkedHashSet<>();
-        for (ID key : keys) {
+        for (ROW row : rows) {
+            if (row == null) {
+                throw badRequest(fieldName + "에 null row가 포함될 수 없습니다.");
+            }
+
+            ID key = keyReader.apply(row);
             if (key == null) {
                 throw badRequest(fieldName + "에 null key가 포함될 수 없습니다.");
             }
@@ -298,18 +375,6 @@ public class GridSaveExecutor {
                 .map(key -> skippedMessage("UPDATE", key, "수정 대상 데이터가 없습니다."))
                 .toList();
         return new UpdateRowsResult<>(updateTargets, messages);
-    }
-
-    /**
-     * 여러 단계에서 만들어진 row 단위 메시지를 응답 순서에 맞게 합칩니다.
-     */
-    private List<GridSaveMessage> mergeMessages(
-            List<GridSaveMessage> createMessages,
-            List<GridSaveMessage> updateMessages,
-            List<GridSaveMessage> deleteMessages) {
-        return Stream.of(createMessages, updateMessages, deleteMessages)
-                .flatMap(List::stream)
-                .toList();
     }
 
     /**

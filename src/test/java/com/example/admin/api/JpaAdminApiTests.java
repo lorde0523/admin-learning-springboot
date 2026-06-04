@@ -2,6 +2,7 @@ package com.example.admin.api;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -181,6 +182,36 @@ class JpaAdminApiTests {
         mockMvc.perform(get("/api/jpa/menus"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.menuCode == 'GRID_NEW')]", hasSize(1)));
+    }
+
+    @Test
+    void returnsPagedMenusThroughJpaAndMyBatis() throws Exception {
+        createMenuThroughGridSave("PAGE_ALPHA", "Paging alpha", 11);
+        createMenuThroughGridSave("PAGE_BRAVO", "Paging bravo", 12);
+        createMenuThroughGridSave("PAGE_CHARLIE", "Paging charlie", 13);
+
+        mockMvc.perform(get("/api/jpa/menus/page")
+                        .param("nameKeyword", "Paging")
+                        .param("page", "0")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(2)))
+                .andExpect(jsonPath("$.content[0].menuCode", is("PAGE_ALPHA")))
+                .andExpect(jsonPath("$.content[1].menuCode", is("PAGE_BRAVO")))
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.number").value(0))
+                .andExpect(jsonPath("$.size").value(2));
+
+        mockMvc.perform(get("/api/mybatis/menus/page")
+                        .param("nameKeyword", "Paging")
+                        .param("page", "1")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].menuCode", is("PAGE_CHARLIE")))
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.number").value(1))
+                .andExpect(jsonPath("$.size").value(2));
     }
 
     @Test
@@ -378,20 +409,38 @@ class JpaAdminApiTests {
     void throwsExceptionForMissingUpdatedMenuIdsWhenGridSaveModeIsStrict() {
         MenuGridRow missingUpdateRow = menuGridRow(999999L, "GRID_STRICT", "Strict missing menu", 1, true);
 
-        assertThatThrownBy(() -> gridSaveExecutor.save(
-                        List.of(),
+        assertThatThrownBy(() -> gridSaveExecutor.update(
                         List.of(missingUpdateRow),
-                        List.of(),
                         menuRepository,
                         MenuGridRow::getId,
-                        MenuGridRow::getId,
                         AdminMenu::getId,
-                        menuMapper::toEntity,
                         menuMapper::updateEntity,
                         "존재하지 않는 메뉴가 포함되어 있습니다.",
                         GridSaveFailureMode.STRICT_EXCEPTION))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("존재하지 않는 메뉴가 포함되어 있습니다.");
+    }
+
+    @Test
+    void deletesMenuRowsWithDtoKeyReaderThroughGridSaveExecutor() throws Exception {
+        Long deleteId = createMenuThroughGridSave("GRID_DELETE_DTO", "Delete DTO menu", 1);
+        MenuGridRow deleteRow = menuGridRow(deleteId, "GRID_DELETE_DTO", "Delete DTO menu", 1, true);
+
+        var result = gridSaveExecutor.delete(
+                List.of(deleteRow),
+                menuRepository,
+                MenuGridRow::getId,
+                AdminMenu::getId,
+                "존재하지 않는 메뉴가 포함되어 있습니다.",
+                GridSaveFailureMode.SKIP_AND_MESSAGE);
+
+        assertThat(result.getCreatedCount()).isZero();
+        assertThat(result.getUpdatedCount()).isZero();
+        assertThat(result.getDeletedCount()).isOne();
+        assertThat(result.getMessages()).isEmpty();
+
+        mockMvc.perform(get("/api/jpa/menus/{id}", deleteId))
+                .andExpect(status().isNotFound());
     }
 
     private Long createMenuThroughGridSave(String menuCode, String menuName, int sortOrder) throws Exception {
