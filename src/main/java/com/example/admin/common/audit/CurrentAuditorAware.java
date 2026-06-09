@@ -1,5 +1,6 @@
 package com.example.admin.common.audit;
 
+import com.example.admin.common.security.LoginUsers;
 import java.util.Optional;
 import org.springframework.data.domain.AuditorAware;
 import org.springframework.security.core.Authentication;
@@ -15,7 +16,8 @@ public class CurrentAuditorAware implements AuditorAware<String> {
 
     @Override
     public Optional<String> getCurrentAuditor() {
-        return authenticatedUsername()
+        return LoginUsers.currentUsername()
+                .or(this::authenticatedUsername)
                 .or(this::requestHeaderUsername)
                 .or(() -> Optional.of("system"));
     }
@@ -39,4 +41,3 @@ public class CurrentAuditorAware implements AuditorAware<String> {
         return StringUtils.hasText(userId) ? Optional.of(userId) : Optional.empty();
     }
 }
-
