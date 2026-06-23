@@ -4,6 +4,10 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -13,11 +17,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.example.admin.common.exception.ResourceNotFoundException;
 import com.example.admin.common.grid.GridSaveExecutor;
 import com.example.admin.common.grid.GridSaveFailureMode;
+import com.example.admin.common.sqltrace.SqlLogEntry;
+import com.example.admin.common.sqltrace.SqlLogSearchClient;
 import com.example.admin.menu.dto.adminmenu.MenuGridRow;
 import com.example.admin.menu.entity.AdminMenu;
 import com.example.admin.menu.mapper.MenuMapper;
 import com.example.admin.menu.repository.AdminMenuRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
@@ -25,6 +32,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -47,6 +55,9 @@ class JpaAdminApiTests {
 
     @Autowired
     private MenuMapper menuMapper;
+
+    @MockitoBean
+    private SqlLogSearchClient sqlLogSearchClient;
 
     @Test
     void createsUserAndAssignsRoleThroughJpaTrack() throws Exception {
@@ -186,12 +197,12 @@ class JpaAdminApiTests {
 
     @Test
     void returnsPagedMenusThroughJpaAndMyBatis() throws Exception {
-        createMenuThroughGridSave("PAGE_ALPHA", "Paging alpha", 11);
-        createMenuThroughGridSave("PAGE_BRAVO", "Paging bravo", 12);
-        createMenuThroughGridSave("PAGE_CHARLIE", "Paging charlie", 13);
+        createMenuThroughGridSave("PAGE_ALPHA", "Baseline alpha", 11);
+        createMenuThroughGridSave("PAGE_BRAVO", "Baseline bravo", 12);
+        createMenuThroughGridSave("PAGE_CHARLIE", "Baseline charlie", 13);
 
         mockMvc.perform(get("/api/jpa/menus/page")
-                        .param("nameKeyword", "Paging")
+                        .param("nameKeyword", "Baseline")
                         .param("page", "0")
                         .param("size", "2"))
                 .andExpect(status().isOk())
@@ -203,7 +214,9 @@ class JpaAdminApiTests {
                 .andExpect(jsonPath("$.size").value(2));
 
         mockMvc.perform(get("/api/mybatis/menus/page")
-                        .param("nameKeyword", "Paging")
+                        .param("nameKeyword", "Baseline")
+                        .param("pageId", "MENU_GRID")
+                        .param("sqlCapturePaused", "false")
                         .param("page", "1")
                         .param("size", "2"))
                 .andExpect(status().isOk())
@@ -212,6 +225,91 @@ class JpaAdminApiTests {
                 .andExpect(jsonPath("$.totalElements").value(3))
                 .andExpect(jsonPath("$.number").value(1))
                 .andExpect(jsonPath("$.size").value(2));
+    }
+
+    @Test
+    void returnsPagedMenusWithoutNewSqlLogsWhenSqlCaptureIsPaused() throws Exception {
+        createMenuThroughGridSave("PAGE_PAUSED", "Paused paging", 21);
+
+        mockMvc.perform(get("/api/mybatis/menus/page")
+                        .param("nameKeyword", "Paused")
+                        .param("pageId", "MENU_GRID")
+                        .param("sqlCapturePaused", "true")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pageId", is("MENU_GRID")))
+                .andExpect(jsonPath("$.sqlCapturePaused", is(true)))
+                .andExpect(jsonPath("$.sqlBatchId").isNotEmpty())
+                .andExpect(jsonPath("$.serverElapsedMillis").isNumber())
+                .andExpect(jsonPath("$.newSqlLogs").isEmpty())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].menuCode", is("PAGE_PAUSED")))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.number").value(0))
+                .andExpect(jsonPath("$.size").value(10));
+
+        verify(sqlLogSearchClient, never()).search(any());
+    }
+
+    @Test
+    void rejectsMyBatisPagedMenuSearchWithoutPageId() throws Exception {
+        mockMvc.perform(get("/api/mybatis/menus/page")
+                        .param("sqlCapturePaused", "false")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is("BAD_REQUEST")));
+    }
+
+    @Test
+    void returnsNewSqlLogsWhenSqlCaptureIsActive() throws Exception {
+        createMenuThroughGridSave("PAGE_SQL_ACTIVE", "Active SQL paging", 22);
+        when(sqlLogSearchClient.search(any())).thenReturn(List.of(SqlLogEntry.builder()
+                .queryId("com.example.admin.menu.store.MyBatisAdminMenuStore.searchPage")
+                .sqlText("SELECT MENU_ID FROM ADMIN_MENU WHERE MENU_NAME LIKE '%Active%'")
+                .executedAt(LocalDateTime.of(2026, 6, 23, 10, 0))
+                .elapsedMillis(12)
+                .build()));
+
+        mockMvc.perform(get("/api/mybatis/menus/page")
+                        .param("nameKeyword", "Active")
+                        .param("pageId", "MENU_GRID")
+                        .param("sqlCapturePaused", "false")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pageId", is("MENU_GRID")))
+                .andExpect(jsonPath("$.sqlCapturePaused", is(false)))
+                .andExpect(jsonPath("$.sqlBatchId").isNotEmpty())
+                .andExpect(jsonPath("$.newSqlLogs", hasSize(1)))
+                .andExpect(jsonPath("$.newSqlLogs[0].queryId",
+                        is("com.example.admin.menu.store.MyBatisAdminMenuStore.searchPage")))
+                .andExpect(jsonPath("$.newSqlLogs[0].sqlText",
+                        is("SELECT MENU_ID FROM ADMIN_MENU WHERE MENU_NAME LIKE '%Active%'")))
+                .andExpect(jsonPath("$.newSqlLogs[0].elapsedMillis").value(12))
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].menuCode", is("PAGE_SQL_ACTIVE")));
+
+        verify(sqlLogSearchClient).search(any());
+    }
+
+    @Test
+    void returnsPagedMenusWhenSqlLogSearchFails() throws Exception {
+        createMenuThroughGridSave("PAGE_SQL_FAIL", "Failed SQL paging", 23);
+        when(sqlLogSearchClient.search(any())).thenThrow(new IllegalStateException("elastic timeout"));
+
+        mockMvc.perform(get("/api/mybatis/menus/page")
+                        .param("nameKeyword", "Failed")
+                        .param("pageId", "MENU_GRID")
+                        .param("sqlCapturePaused", "false")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pageId", is("MENU_GRID")))
+                .andExpect(jsonPath("$.newSqlLogs").isEmpty())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].menuCode", is("PAGE_SQL_FAIL")));
     }
 
     @Test

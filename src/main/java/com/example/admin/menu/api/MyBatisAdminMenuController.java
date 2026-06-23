@@ -1,8 +1,8 @@
 package com.example.admin.menu.api;
 
+import com.example.admin.common.sqltrace.SqlTracePageResponse;
 import com.example.admin.menu.dto.adminmenu.MenuResponse;
 import com.example.admin.menu.service.MyBatisAdminMenuService;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,9 +21,11 @@ public class MyBatisAdminMenuController {
     }
 
     @GetMapping("/page")
-    public Page<MenuResponse> searchPage(
+    public SqlTracePageResponse<MenuResponse> searchPage(
             @RequestParam(required = false) String nameKeyword,
+            @RequestParam String pageId,
+            @RequestParam(defaultValue = "false") boolean sqlCapturePaused,
             @PageableDefault(size = 20, sort = {"sortOrder", "id"}) Pageable pageable) {
-        return menuService.searchPage(nameKeyword, pageable);
+        return menuService.searchPage(nameKeyword, pageId, sqlCapturePaused, pageable);
     }
 }
