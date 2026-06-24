@@ -50,6 +50,27 @@ X-Request-Id: 2de4a7d7-1453-4652-85dd-ef8ddfa57467
 
 ## Server Architecture
 
+### Package Boundary
+
+이번 기능의 서버 코드는 `com.example.admin.sqltrace` 아래에 모은다.
+
+```text
+com.example.admin.sqltrace
+├── api
+├── config
+├── context
+├── jdbc
+└── storage
+```
+
+- `api`: 별도 SQL 로그 조회 API와 응답 DTO
+- `config`: 설정 프로퍼티, 필터 및 JDBC 프록시 등록
+- `context`: 요청별 `pageId`, `requestId`, 일시정지 상태
+- `jdbc`: JDBC 실행 감시, 파라미터 수집, SQL 렌더링, 마스킹 확장점
+- `storage`: SQL 실행 레코드와 날짜별 JSONL 파일 저장·조회
+
+기존 `menu`, `user`, `role`, `common` 패키지에는 이 기능의 구현 클래스를 추가하지 않는다. 기존 업무 컨트롤러와 서비스는 헤더나 SQL 추적 타입을 직접 의존하지 않는다.
+
 ### Request Context Filter
 
 `SqlCaptureRequestFilter`는 `OncePerRequestFilter`를 상속한다.
