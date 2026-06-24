@@ -10,13 +10,16 @@
 - 파라미터 값이 치환된 SQL 전문
 - SQL 실행시간
 - 클라이언트가 계산한 원 업무 API 왕복시간
+- 클라이언트 조회 시작부터 SQL 로그 행 생성 완료까지의 전체 시간
 
 ## Confirmed Behavior
 
 - 동일한 `pageId` 화면은 동시에 한 탭만 열린다고 가정한다.
 - SQL 그리드 목록은 열린 탭의 React 메모리 상태가 소유한다.
+- SQL 그리드 목록은 React Query 캐시나 전역 상태에 저장하지 않고 탭 컴포넌트의 로컬 상태로만 관리한다.
 - 탭이 유지되는 동안 새 SQL 행을 기존 목록 뒤에 누적한다.
 - 탭을 닫으면 해당 목록은 폐기된다.
+- `page01` 탭에서 3개 행이 누적된 뒤 탭을 닫고 새 `page01` 탭을 열면 목록은 빈 배열에서 시작한다.
 - 서버 DB, Redis, `localStorage`, `sessionStorage`에는 그리드 목록을 저장하지 않는다.
 - SQL 수집 일시정지는 기존 목록을 숨기거나 삭제하지 않는다.
 - 일시정지 상태에서 실행된 SQL은 SQL 전용 파일에 기록하지 않는다.
@@ -187,19 +190,34 @@ GET /api/sql-logs?requestId={requestId}&pageId={pageId}
 
 ## Client Flow
 
-1. 탭은 `sqlCapturePaused`와 누적 `sqlLogs`를 React 메모리 상태로 관리한다.
-2. 조회 버튼 클릭 시 `performance.now()`로 시작 시간을 저장한다.
-3. React Query의 `queryFn`이 업무 조회 API에 `X-Page-Id`와 `X-Sql-Capture-Paused`를 전달한다.
-4. 업무 응답 수신 직후 `clientApiElapsedMillis`를 계산한다.
-5. 응답의 `X-Request-Id`를 읽는다.
-6. 일시정지가 아니면 별도 SQL 로그 API를 `requestId`와 현재 탭의 `pageId`로 호출한다.
-7. 반환된 SQL 각 행에 동일한 `clientApiElapsedMillis`를 결합한다.
-8. 결합한 행을 탭의 기존 SQL 목록 뒤에 추가한다.
-9. 일시정지이면 SQL 로그 API를 호출하지 않고 기존 목록을 그대로 둔다.
+1. 탭은 `sqlCapturePaused`와 누적 `sqlLogs`를 탭 컴포넌트의 `useState`로 관리한다.
+2. 탭 컴포넌트가 마운트될 때 `sqlLogs`는 항상 빈 배열로 초기화한다.
+3. 탭이 언마운트되면 별도 저장 없이 `sqlLogs` 상태를 폐기한다.
+4. 조회 버튼 클릭 시 `performance.now()`로 전체 조회 시작 시간을 저장한다.
+5. React Query의 `queryFn`이 업무 조회 API에 `X-Page-Id`와 `X-Sql-Capture-Paused`를 전달한다.
+6. 업무 응답 수신 직후 `clientApiElapsedMillis`를 계산한다.
+7. 응답의 `X-Request-Id`를 읽는다.
+8. 일시정지가 아니면 별도 SQL 로그 API를 `requestId`와 현재 탭의 `pageId`로 호출한다.
+9. 반환된 SQL을 그리드 행으로 변환한다.
+10. SQL 로그 조회, 응답 변환 및 행 생성이 끝난 직후 `clientTotalElapsedMillis`를 계산한다.
+11. 이번 요청의 각 SQL 행에 동일한 `clientApiElapsedMillis`와 `clientTotalElapsedMillis`를 결합하고 한 번의 상태 갱신으로 기존 목록 뒤에 추가한다.
+12. 일시정지이면 SQL 로그 API를 호출하지 않고 기존 목록을 그대로 둔다. 이때 전체 시간은 업무 응답 처리와 일시정지 분기 처리가 끝난 시점에 계산하지만 새 SQL 행이 없으므로 그리드에는 추가하지 않는다.
 
 API 한 번에 SQL이 여러 개 실행되면 각 SQL을 별도 행으로 표시하고 동일한 원 업무 API 왕복시간을 반복 표시한다.
 
 클라이언트의 SQL 로그 API 호출 시간은 `clientApiElapsedMillis`에 포함하지 않는다.
+
+시간 정의:
+
+```text
+clientApiElapsedMillis =
+  원 업무 API 응답 수신 시각 - 원 업무 API 전송 직전 시각
+
+clientTotalElapsedMillis =
+  SQL 로그 행 생성 완료 시각 - 조회 버튼 처리 시작 시각
+```
+
+`clientTotalElapsedMillis`에는 원 업무 API 왕복, SQL 로그 API 왕복, 응답 변환 및 SQL 행 생성을 포함한다. React 렌더링과 브라우저 화면 그리기 시간은 포함하지 않는다.
 
 ## Grid Columns
 
@@ -209,6 +227,7 @@ API 한 번에 SQL이 여러 개 실행되면 각 SQL을 별도 행으로 표시
 | SQL 전문 | SQL 로그의 `sql` |
 | SQL 실행시간(ms) | SQL 로그의 `elapsedMillis` |
 | API 왕복시간(ms) | 클라이언트의 `clientApiElapsedMillis` |
+| 클라이언트 전체시간(ms) | 클라이언트의 `clientTotalElapsedMillis` |
 | 실행시각 | SQL 로그의 `executedAt` |
 
 ## Error Handling
@@ -254,6 +273,17 @@ API 한 번에 SQL이 여러 개 실행되면 각 SQL을 별도 행으로 표시
 - 일시정지 요청은 업무 조회를 수행하지만 로그 API 결과는 빈 배열이다.
 - 일시정지 해제 후 새 요청의 SQL만 반환되고 이전 일시정지 SQL은 나타나지 않는다.
 - 기존 페이징 응답 형식은 변경되지 않는다.
+
+### Client Contract Tests
+
+프론트엔드 프로젝트에서 다음 동작을 검증한다. 현재 서버 저장소에서는 테스트 코드를 추가하지 않는다.
+
+- 조회 버튼 처리 시작부터 SQL 로그 행 생성 완료까지 `clientTotalElapsedMillis`를 계산한다.
+- 원 업무 API 왕복시간에는 SQL 로그 API 호출시간이 포함되지 않는다.
+- 한 업무 요청에서 여러 SQL 행이 반환되면 같은 API 왕복시간과 클라이언트 전체시간을 표시한다.
+- 탭이 열린 동안 후속 조회 결과가 기존 목록 뒤에 누적된다.
+- `page01` 탭에서 3개 행을 만든 뒤 탭을 닫고 새 `page01` 탭을 열면 SQL 목록이 0개로 시작한다.
+- React Query의 업무 데이터 캐시가 남아 있어도 SQL 그리드 목록은 복원되지 않는다.
 
 ## Out of Scope
 
