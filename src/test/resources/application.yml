@@ -15,3 +15,8 @@ mybatis:
   mapper-locations: classpath*:/mybatis/*.xml
   configuration:
     map-underscore-to-camel-case: true
+
+admin:
+  sql-trace:
+    enabled: true
+    directory: ./build/test-sql-trace

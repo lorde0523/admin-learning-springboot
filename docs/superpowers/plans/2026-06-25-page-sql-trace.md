@@ -738,10 +738,13 @@ Add:
 ```yaml
 admin:
   sql-trace:
+    enabled: ${SQL_TRACE_ENABLED:false}
     directory: ${SQL_TRACE_DIRECTORY:./logs/sql-trace}
 ```
 
 to `application.yml`.
+
+Apply `@ConditionalOnProperty(name = "admin.sql-trace.enabled", havingValue = "true")` to both `SqlTraceConfiguration` and `SqlTraceController`.
 
 - [ ] **Step 5: Run configuration tests and verify GREEN**
 
@@ -888,6 +891,7 @@ Configure an isolated directory:
 ```yaml
 admin:
   sql-trace:
+    enabled: true
     directory: ./build/test-sql-trace
 ```
 

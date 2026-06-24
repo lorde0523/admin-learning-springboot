@@ -157,8 +157,13 @@ SQL 렌더링 직전에 `SqlValueMasker` 인터페이스를 호출한다. 기본
 ```yaml
 admin:
   sql-trace:
+    enabled: ${SQL_TRACE_ENABLED:false}
     directory: ${SQL_TRACE_DIRECTORY:./logs/sql-trace}
 ```
+
+SQL 전문과 파라미터가 마스킹 없이 저장되므로 기능은 기본 비활성이다. 로컬에서 사용할 때만 `SQL_TRACE_ENABLED=true`를 명시한다. 비활성 상태에서는 요청 필터, JDBC 프록시, 파일 저장소 및 `/api/sql-logs` API를 등록하지 않는다.
+
+인증과 접근 제어가 확정되지 않은 개발·운영 공유 환경에서는 활성화하지 않는다. 향후 공유 환경에서 활성화하려면 SQL 로그 API 권한, 사용자 또는 세션별 로그 소유권, 호출량 제한과 보존 기간을 먼저 정의한다.
 
 파일은 날짜별 JSON Lines 형식으로 저장한다.
 
@@ -316,3 +321,5 @@ clientTotalElapsedMillis =
 - 로그 보존 기간과 자동 삭제
 - 다중 애플리케이션 인스턴스 간 파일 동기화
 - 프론트엔드 프로젝트 코드 구현
+- 공유 환경의 인증·인가 및 사용자별 로그 소유권
+- 호출량 제한과 로그 파일 보존 정책
