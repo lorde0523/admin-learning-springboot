@@ -5,12 +5,15 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.example.admin.common.security.LoginUser;
 import com.example.admin.menu.entity.AdminMenu;
 import com.example.admin.menu.repository.AdminMenuRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,8 +29,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextImpl;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -61,88 +70,185 @@ class SqlTraceIntegrationTests {
     }
 
     @Test
-    void capturesParameterCompleteMyBatisSelectsWithoutChangingPagingResponse() throws Exception {
-        MvcResult result = trackedGet("/api/mybatis/menus/page", "page01", false);
+    void accumulatesParameterCompleteMyBatisSelectsForThePage() throws Exception {
+        trackedGet("/api/mybatis/menus/page", "user1", "page01", false);
+        int firstCount = listLogs("user1", "page01").size();
 
-        String requestId = result.getResponse().getHeader("X-Request-Id");
-        assertThat(requestId).isNotBlank();
-        mockMvc.perform(get("/api/sql-logs")
-                        .param("requestId", requestId)
-                        .param("pageId", "page01"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.logs").isNotEmpty())
-                .andExpect(jsonPath("$.logs[0].sql", not(containsString("?"))));
+        trackedGet("/api/mybatis/menus/page", "user1", "page01", false);
+        JsonNode accumulated = listLogs("user1", "page01");
+
+        assertThat(firstCount).isPositive();
+        assertThat(accumulated.size()).isGreaterThan(firstCount);
+        assertThat(accumulated.toString()).doesNotContain("?");
     }
 
     @Test
-    void capturesJpaSelectsThroughTheSameJdbcBoundary() throws Exception {
-        MvcResult result = trackedGet("/api/jpa/menus/page", "page02", false);
-        String requestId = result.getResponse().getHeader("X-Request-Id");
+    void capturesJpaSelectsThroughTheSameUserScopedList() throws Exception {
+        trackedGet("/api/jpa/menus/page", "user1", "page02", false);
 
-        String response = mockMvc.perform(get("/api/sql-logs")
-                        .param("requestId", requestId)
-                        .param("pageId", "page02"))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        JsonNode logs = listLogs("user1", "page02");
 
-        JsonNode logs = objectMapper.readTree(response).get("logs");
         assertThat(logs).isNotEmpty();
         assertThat(logs.toString().toLowerCase()).contains("admin_menu");
         assertThat(logs.toString()).doesNotContain("?");
     }
 
     @Test
-    void pausedRequestIsNeverWrittenAndResumeCapturesOnlyTheNewRequest() throws Exception {
-        MvcResult paused = trackedGet("/api/mybatis/menus/page", "page01", true);
-        assertLookupSize(paused, "page01", 0);
+    void doesNotExposeOneUsersLogsToAnotherUser() throws Exception {
+        trackedGet("/api/mybatis/menus/page", "user1", "page01", false);
 
-        MvcResult resumed = trackedGet("/api/mybatis/menus/page", "page01", false);
-        assertLookupHasRows(resumed, "page01");
-        assertLookupSize(paused, "page01", 0);
+        assertThat(listLogs("user1", "page01")).isNotEmpty();
+        assertThat(listLogs("user2", "page01")).isEmpty();
     }
 
     @Test
-    void requestsWithoutPageIdAndNonGetRequestsAreNotTraced() throws Exception {
+    void pausedRequestKeepsPreviousListWithoutAppending() throws Exception {
+        trackedGet("/api/mybatis/menus/page", "user1", "page01", false);
+        int beforePause = listLogs("user1", "page01").size();
+
+        trackedGet("/api/mybatis/menus/page", "user1", "page01", true);
+
+        assertThat(listLogs("user1", "page01")).hasSize(beforePause);
+    }
+
+    @Test
+    void clearHidesPreviousRowsAndLaterQueriesAppearAgain() throws Exception {
+        trackedGet("/api/mybatis/menus/page", "user1", "page01", false);
+        assertThat(listLogs("user1", "page01")).isNotEmpty();
+
+        mockMvc.perform(delete("/api/sql-logs")
+                        .with(login("user1"))
+                        .param("pageId", "page01"))
+                .andExpect(status().isNoContent());
+        assertThat(listLogs("user1", "page01")).isEmpty();
+
+        trackedGet("/api/mybatis/menus/page", "user1", "page01", false);
+        assertThat(listLogs("user1", "page01")).isNotEmpty();
+    }
+
+    @Test
+    void clientTimingIsCombinedWithEverySqlFromTheBusinessRequest() throws Exception {
+        MvcResult result = trackedGet(
+                "/api/mybatis/menus/page", "user1", "page01", false);
+        String requestId = result.getResponse().getHeader("X-Request-Id");
+
+        mockMvc.perform(post("/api/sql-logs/timing")
+                        .with(login("user1"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "requestId": "%s",
+                                  "pageId": "page01",
+                                  "clientApiElapsedMillis": 35.2,
+                                  "clientTotalElapsedMillis": 48.7
+                                }
+                                """.formatted(requestId)))
+                .andExpect(status().isNoContent());
+
+        JsonNode logs = listLogs("user1", "page01");
+        for (JsonNode log : logs) {
+            if (requestId.equals(log.get("requestId").asText())) {
+                assertThat(log.get("clientApiElapsedMillis").asDouble()).isEqualTo(35.2);
+                assertThat(log.get("clientTotalElapsedMillis").asDouble()).isEqualTo(48.7);
+            }
+        }
+    }
+
+    @Test
+    void unauthenticatedAndUnidentifiedRequestsAreNotTraced() throws Exception {
         mockMvc.perform(get("/api/mybatis/menus/page")
+                        .header("X-Page-Id", "page01")
+                        .header("X-Sql-Capture-Paused", "false")
                         .param("nameKeyword", menuName)
                         .param("page", "0")
                         .param("size", "2"))
                 .andExpect(status().isOk())
                 .andExpect(header().doesNotExist("X-Request-Id"));
 
-        mockMvc.perform(post("/api/jpa/menus/grid-save")
-                        .header("X-Page-Id", "page01")
-                        .header("X-Sql-Capture-Paused", "false")
+        mockMvc.perform(get("/api/sql-logs")
+                        .param("pageId", "page01"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/sql-logs/timing")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "createdRows": [],
-                                  "updatedRows": [],
-                                  "deletedIds": []
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(header().doesNotExist("X-Request-Id"));
+                        .content("{}"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
-    void sqlLogEndpointDoesNotCreateAnotherTrace() throws Exception {
-        MvcResult business = trackedGet("/api/mybatis/menus/page", "page01", false);
-        String requestId = business.getResponse().getHeader("X-Request-Id");
+    void restoresLoginUserFromSessionForNexacroStyleFollowUpRequests() throws Exception {
+        LoginUser loginUser = LoginUser.sessionUser("session-user", "Session User", List.of());
+        MockHttpSession session = new MockHttpSession();
+        session.setAttribute(
+                HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
+                new SecurityContextImpl(UsernamePasswordAuthenticationToken.authenticated(
+                        loginUser,
+                        "",
+                        loginUser.getAuthorities())));
 
-        mockMvc.perform(get("/api/sql-logs")
+        MvcResult business = mockMvc.perform(get("/api/mybatis/menus/page")
+                        .session(session)
                         .header("X-Page-Id", "page01")
                         .header("X-Sql-Capture-Paused", "false")
-                        .param("requestId", requestId)
+                        .param("nameKeyword", menuName)
+                        .param("page", "0")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(header().exists("X-Request-Id"))
+                .andReturn();
+
+        String requestId = business.getResponse().getHeader("X-Request-Id");
+        mockMvc.perform(post("/api/sql-logs/timing")
+                        .session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "requestId": "%s",
+                                  "pageId": "page01",
+                                  "clientApiElapsedMillis": 10,
+                                  "clientTotalElapsedMillis": 20
+                                }
+                                """.formatted(requestId)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/sql-logs")
+                        .session(session)
+                        .param("pageId", "page01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.logs").isNotEmpty())
+                .andExpect(jsonPath("$.logs[0].clientApiElapsedMillis").value(10));
+
+        mockMvc.perform(delete("/api/sql-logs")
+                        .session(session)
+                        .param("pageId", "page01"))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/sql-logs")
+                        .session(session)
+                        .param("pageId", "page01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.logs", hasSize(0)));
+    }
+
+    @Test
+    void sqlLogEndpointsDoNotCreateAnotherTrace() throws Exception {
+        trackedGet("/api/mybatis/menus/page", "user1", "page01", false);
+
+        mockMvc.perform(get("/api/sql-logs")
+                        .with(login("user1"))
+                        .header("X-Page-Id", "page01")
+                        .header("X-Sql-Capture-Paused", "false")
                         .param("pageId", "page01"))
                 .andExpect(status().isOk())
                 .andExpect(header().doesNotExist("X-Request-Id"));
     }
 
-    private MvcResult trackedGet(String path, String pageId, boolean paused) throws Exception {
+    private MvcResult trackedGet(
+            String path,
+            String username,
+            String pageId,
+            boolean paused) throws Exception {
         return mockMvc.perform(get(path)
+                        .with(login(username))
                         .header("X-Page-Id", pageId)
                         .header("X-Sql-Capture-Paused", Boolean.toString(paused))
                         .param("nameKeyword", menuName)
@@ -157,22 +263,24 @@ class SqlTraceIntegrationTests {
                 .andReturn();
     }
 
-    private void assertLookupSize(MvcResult businessResult, String pageId, int size) throws Exception {
-        String requestId = businessResult.getResponse().getHeader("X-Request-Id");
-        mockMvc.perform(get("/api/sql-logs")
-                        .param("requestId", requestId)
+    private JsonNode listLogs(String username, String pageId) throws Exception {
+        String response = mockMvc.perform(get("/api/sql-logs")
+                        .with(login(username))
                         .param("pageId", pageId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.logs", hasSize(size)));
+                .andExpect(jsonPath("$.logs[*].sql", not(containsString("?"))))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(response).get("logs");
     }
 
-    private void assertLookupHasRows(MvcResult businessResult, String pageId) throws Exception {
-        String requestId = businessResult.getResponse().getHeader("X-Request-Id");
-        mockMvc.perform(get("/api/sql-logs")
-                        .param("requestId", requestId)
-                        .param("pageId", pageId))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.logs").isNotEmpty());
+    private RequestPostProcessor login(String username) {
+        LoginUser loginUser = LoginUser.sessionUser(username, username, List.of());
+        return authentication(UsernamePasswordAuthenticationToken.authenticated(
+                loginUser,
+                "",
+                loginUser.getAuthorities()));
     }
 
     private void deleteLogDirectory() throws Exception {

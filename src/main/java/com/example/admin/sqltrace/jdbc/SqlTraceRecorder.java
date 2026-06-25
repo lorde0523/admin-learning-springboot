@@ -35,7 +35,8 @@ public class SqlTraceRecorder {
         }
 
         SqlCaptureContext context = current.get();
-        SqlTraceEntry entry = new SqlTraceEntry(
+        SqlTraceEntry entry = SqlTraceEntry.query(
+                context.username(),
                 context.requestId(),
                 context.pageId(),
                 executedAt,

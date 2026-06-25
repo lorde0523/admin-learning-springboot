@@ -15,8 +15,12 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,41 +60,107 @@ public class JsonLineSqlTraceStore implements SqlTraceStore {
     }
 
     @Override
-    public List<SqlTraceEntry> find(String requestId, String pageId) throws IOException {
+    public List<SqlTraceEntry> find(String username, String pageId) throws IOException {
         ioLock.lock();
         try {
-            LocalDate today = LocalDate.now(clock);
-            List<SqlTraceEntry> matches = new ArrayList<>();
-            readMatches(fileFor(today), requestId, pageId, matches);
-            readMatches(fileFor(today.minusDays(1)), requestId, pageId, matches);
-            return List.copyOf(matches);
+            List<SqlTraceEntry> queries = new ArrayList<>();
+            Map<String, SqlTraceEntry> timings = new HashMap<>();
+            for (Path file : traceFiles()) {
+                readEvents(file, username, pageId, queries, timings);
+            }
+            return queries.stream()
+                    .map(query -> query.withTiming(timings.get(query.requestId())))
+                    .toList();
         } finally {
             ioLock.unlock();
         }
     }
 
-    private void readMatches(
-            Path file,
-            String requestId,
-            String pageId,
-            List<SqlTraceEntry> matches) throws IOException {
-        if (Files.notExists(file)) {
-            return;
+    @Override
+    public boolean appendTimingIfOwned(SqlTraceEntry timing) throws IOException {
+        ioLock.lock();
+        try {
+            if (!hasVisibleQuery(timing.username(), timing.requestId(), timing.pageId())) {
+                return false;
+            }
+            Files.createDirectories(directory);
+            Files.writeString(
+                    fileFor(LocalDate.now(clock)),
+                    objectMapper.writeValueAsString(timing) + System.lineSeparator(),
+                    UTF_8,
+                    CREATE,
+                    WRITE,
+                    APPEND);
+            return true;
+        } finally {
+            ioLock.unlock();
         }
+    }
 
+    private boolean hasVisibleQuery(String username, String requestId, String pageId)
+            throws IOException {
+        List<SqlTraceEntry> queries = new ArrayList<>();
+        Map<String, SqlTraceEntry> timings = new HashMap<>();
+        for (Path file : traceFiles()) {
+            readEvents(file, username, pageId, queries, timings);
+        }
+        return queries.stream().anyMatch(entry -> requestId.equals(entry.requestId()));
+    }
+
+    private List<Path> traceFiles() throws IOException {
+        if (Files.notExists(directory)) {
+            return List.of();
+        }
+        try (Stream<Path> paths = Files.list(directory)) {
+            return paths
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().matches(
+                            "sql-trace-\\d{4}-\\d{2}-\\d{2}\\.jsonl"))
+                    .sorted(Comparator.comparing(path -> path.getFileName().toString()))
+                    .toList();
+        }
+    }
+
+    private void readEvents(
+            Path file,
+            String username,
+            String pageId,
+            List<SqlTraceEntry> queries,
+            Map<String, SqlTraceEntry> timings) throws IOException {
         try (BufferedReader reader = Files.newBufferedReader(file, UTF_8)) {
             String line;
             while ((line = reader.readLine()) != null) {
-                try {
-                    SqlTraceEntry entry = objectMapper.readValue(line, SqlTraceEntry.class);
-                    if (requestId.equals(entry.requestId()) && pageId.equals(entry.pageId())) {
-                        matches.add(entry);
-                    }
-                } catch (JsonProcessingException | RuntimeException exception) {
-                    log.warn("Skipping malformed SQL trace line. file={}", file, exception);
+                SqlTraceEntry entry = parse(line, file);
+                if (!belongsTo(entry, username, pageId)) {
+                    continue;
+                }
+                if (entry.eventType() == SqlTraceEventType.CLEAR) {
+                    queries.clear();
+                    timings.clear();
+                } else if (entry.eventType() == SqlTraceEventType.QUERY) {
+                    queries.add(entry);
+                } else if (entry.eventType() == SqlTraceEventType.TIMING
+                        && entry.requestId() != null) {
+                    timings.put(entry.requestId(), entry);
                 }
             }
         }
+    }
+
+    private SqlTraceEntry parse(String line, Path file) {
+        try {
+            return objectMapper.readValue(line, SqlTraceEntry.class);
+        } catch (JsonProcessingException | RuntimeException exception) {
+            log.warn("Skipping malformed SQL trace line. file={}", file, exception);
+            return null;
+        }
+    }
+
+    private boolean belongsTo(SqlTraceEntry entry, String username, String pageId) {
+        return entry != null
+                && entry.eventType() != null
+                && username.equals(entry.username())
+                && pageId.equals(entry.pageId());
     }
 
     private Path fileFor(LocalDate date) {

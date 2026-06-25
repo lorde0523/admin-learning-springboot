@@ -32,7 +32,7 @@ class SqlTraceRecorderTests {
 
     @Test
     void recordsRenderedSqlForActiveContext() {
-        SqlCaptureContextHolder.set(new SqlCaptureContext("request-1", "page01", false));
+        SqlCaptureContextHolder.set(new SqlCaptureContext("user1", "request-1", "page01", false));
 
         recorder.record(
                 "select * from admin_menu where menu_name = ?",
@@ -43,7 +43,7 @@ class SqlTraceRecorderTests {
         assertThat(store.entries).singleElement().satisfies(entry -> {
             assertThat(entry.requestId()).isEqualTo("request-1");
             assertThat(entry.pageId()).isEqualTo("page01");
-            assertThat(entry.elapsedMillis()).isEqualTo(12);
+            assertThat(entry.sqlElapsedMillis()).isEqualTo(12);
             assertThat(entry.sql()).contains("menu_name = 'Admin'");
         });
     }
@@ -53,7 +53,7 @@ class SqlTraceRecorderTests {
         recorder.record("select 1", Map.of(), 1_000_000L, NOW);
         assertThat(store.entries).isEmpty();
 
-        SqlCaptureContextHolder.set(new SqlCaptureContext("request-1", "page01", true));
+        SqlCaptureContextHolder.set(new SqlCaptureContext("user1", "request-1", "page01", true));
         recorder.record("select 1", Map.of(), 1_000_000L, NOW);
         assertThat(store.entries).isEmpty();
     }
@@ -61,7 +61,7 @@ class SqlTraceRecorderTests {
     @Test
     void storageFailureDoesNotEscape() {
         store.failure = new IOException("disk full");
-        SqlCaptureContextHolder.set(new SqlCaptureContext("request-1", "page01", false));
+        SqlCaptureContextHolder.set(new SqlCaptureContext("user1", "request-1", "page01", false));
 
         assertThatCode(() -> recorder.record("select 1", Map.of(), 1_000_000L, NOW))
                 .doesNotThrowAnyException();
@@ -69,7 +69,7 @@ class SqlTraceRecorderTests {
 
     @Test
     void skipsNonSelectSqlEvenWithActiveContext() {
-        SqlCaptureContextHolder.set(new SqlCaptureContext("request-1", "page01", false));
+        SqlCaptureContextHolder.set(new SqlCaptureContext("user1", "request-1", "page01", false));
 
         recorder.record("update admin_menu set enabled = false", Map.of(), 1_000_000L, NOW);
         recorder.record("call some_procedure()", Map.of(), 1_000_000L, NOW);
@@ -79,7 +79,7 @@ class SqlTraceRecorderTests {
 
     @Test
     void recordsSelectAndCommonTableExpressionQueries() {
-        SqlCaptureContextHolder.set(new SqlCaptureContext("request-1", "page01", false));
+        SqlCaptureContextHolder.set(new SqlCaptureContext("user1", "request-1", "page01", false));
 
         recorder.record("  SELECT 1", Map.of(), 1_000_000L, NOW);
         recorder.record("with menu_rows as (select 1) select * from menu_rows", Map.of(), 1_000_000L, NOW);
@@ -101,8 +101,13 @@ class SqlTraceRecorderTests {
         }
 
         @Override
-        public List<SqlTraceEntry> find(String requestId, String pageId) {
+        public List<SqlTraceEntry> find(String username, String pageId) {
             return List.of();
+        }
+
+        @Override
+        public boolean appendTimingIfOwned(SqlTraceEntry timing) {
+            return false;
         }
     }
 }

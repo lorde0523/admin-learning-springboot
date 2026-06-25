@@ -2,11 +2,16 @@ package com.example.admin.sqltrace.context;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.example.admin.common.security.LoginUser;
 import jakarta.servlet.ServletException;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -14,6 +19,22 @@ import org.springframework.mock.web.MockHttpServletResponse;
 class SqlCaptureRequestFilterTests {
 
     private final SqlCaptureRequestFilter filter = new SqlCaptureRequestFilter();
+
+    @BeforeEach
+    void authenticate() {
+        LoginUser loginUser = LoginUser.sessionUser("user1", "User 1", java.util.List.of());
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated(
+                        loginUser,
+                        "",
+                        loginUser.getAuthorities()));
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+        SqlCaptureContextHolder.clear();
+    }
 
     @Test
     void createsContextAndResponseHeaderForTrackedGetRequest() throws Exception {
@@ -27,6 +48,7 @@ class SqlCaptureRequestFilterTests {
                 observed.set(SqlCaptureContextHolder.current().orElseThrow()));
 
         assertThat(observed.get().pageId()).isEqualTo("page01");
+        assertThat(observed.get().username()).isEqualTo("user1");
         assertThat(observed.get().sqlCapturePaused()).isFalse();
         assertThat(response.getHeader("X-Request-Id")).isEqualTo(observed.get().requestId());
         assertThat(SqlCaptureContextHolder.current()).isEmpty();
@@ -49,6 +71,19 @@ class SqlCaptureRequestFilterTests {
     @Test
     void doesNotCreateContextWithoutPageId() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/jpa/menus/page");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, (req, res) ->
+                assertThat(SqlCaptureContextHolder.current()).isEmpty());
+
+        assertThat(response.getHeader("X-Request-Id")).isNull();
+    }
+
+    @Test
+    void doesNotCreateContextWithoutAuthenticatedLoginUser() throws Exception {
+        SecurityContextHolder.clearContext();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/jpa/menus/page");
+        request.addHeader("X-Page-Id", "page01");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilter(request, response, (req, res) ->

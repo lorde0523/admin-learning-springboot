@@ -7,23 +7,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.example.admin.sqltrace.config.SqlTraceProperties;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.io.UncheckedIOException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -31,6 +31,8 @@ import org.junit.jupiter.api.io.TempDir;
 class JsonLineSqlTraceStoreTests {
 
     private static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
+    private static final OffsetDateTime TIME =
+            OffsetDateTime.parse("2026-06-25T14:20:31+09:00");
 
     @TempDir
     Path tempDirectory;
@@ -41,37 +43,120 @@ class JsonLineSqlTraceStoreTests {
 
     @BeforeEach
     void setUp() {
-        SqlTraceProperties properties = new SqlTraceProperties();
-        properties.setDirectory(tempDirectory);
-        store = new JsonLineSqlTraceStore(properties, objectMapper, clock);
+        store = newStore(objectMapper);
     }
 
     @Test
-    void appendsAndFindsOnlyMatchingRequestAndPage() throws Exception {
-        store.append(entry("request-1", "page01", "select 1"));
-        store.append(entry("request-1", "page02", "select 2"));
-        store.append(entry("request-2", "page01", "select 3"));
+    void returnsAccumulatedQueriesOnlyForCurrentUserAndPage() throws Exception {
+        store.append(query("user1", "request-1", "page01", "select 1"));
+        store.append(query("user1", "request-2", "page01", "select 2"));
+        store.append(query("user1", "request-3", "page02", "select 3"));
+        store.append(query("user2", "request-4", "page01", "select 4"));
 
-        assertThat(store.find("request-1", "page01"))
+        assertThat(store.find("user1", "page01"))
                 .extracting(SqlTraceEntry::sql)
-                .containsExactly("select 1");
+                .containsExactly("select 1", "select 2");
+        assertThat(store.find("user2", "page01"))
+                .extracting(SqlTraceEntry::sql)
+                .containsExactly("select 4");
     }
 
     @Test
-    void readsTodayAndPreviousDayFiles() throws Exception {
-        writeEntryFor(LocalDate.of(2026, 6, 24), entry("request-old", "page01", "select old"));
-        writeEntryFor(LocalDate.of(2026, 6, 25), entry("request-new", "page01", "select new"));
+    void combinesClientTimingWithEveryQueryFromTheSameRequest() throws Exception {
+        store.append(query("user1", "request-1", "page01", "select 1"));
+        store.append(query("user1", "request-1", "page01", "select 2"));
+        store.append(SqlTraceEntry.timing(
+                "user1", "request-1", "page01", TIME.plusSeconds(1), 35.2, 48.7));
 
-        assertThat(store.find("request-old", "page01")).hasSize(1);
-        assertThat(store.find("request-new", "page01")).hasSize(1);
+        assertThat(store.find("user1", "page01")).allSatisfy(entry -> {
+            assertThat(entry.clientApiElapsedMillis()).isEqualTo(35.2);
+            assertThat(entry.clientTotalElapsedMillis()).isEqualTo(48.7);
+        });
     }
 
     @Test
-    void skipsMalformedLines() throws Exception {
+    void clearHidesPreviousQueriesAndKeepsLaterQueries() throws Exception {
+        store.append(query("user1", "request-old", "page01", "select old"));
+        store.append(query("user2", "request-other", "page01", "select other"));
+        store.append(SqlTraceEntry.clear("user1", "page01", TIME.plusMinutes(1)));
+        store.append(query(
+                "user1",
+                "request-new",
+                "page01",
+                "select new",
+                TIME.plusMinutes(2)));
+
+        assertThat(store.find("user1", "page01"))
+                .extracting(SqlTraceEntry::sql)
+                .containsExactly("select new");
+        assertThat(store.find("user2", "page01"))
+                .extracting(SqlTraceEntry::sql)
+                .containsExactly("select other");
+    }
+
+    @Test
+    void clearMarkerSurvivesStoreRecreation() throws Exception {
+        store.append(query("user1", "request-old", "page01", "select old"));
+        store.append(SqlTraceEntry.clear("user1", "page01", TIME.plusMinutes(1)));
+
+        JsonLineSqlTraceStore recreated = newStore(objectMapper);
+
+        assertThat(recreated.find("user1", "page01")).isEmpty();
+    }
+
+    @Test
+    void appendTimingIfOwnedChecksUserRequestAndPageOwnership() throws Exception {
+        store.append(query("user1", "request-1", "page01", "select 1"));
+
+        assertThat(store.appendTimingIfOwned(SqlTraceEntry.timing(
+                "user1", "request-1", "page01", TIME.plusSeconds(1), 1, 2))).isTrue();
+        assertThat(store.appendTimingIfOwned(SqlTraceEntry.timing(
+                "user2", "request-1", "page01", TIME.plusSeconds(1), 1, 2))).isFalse();
+        assertThat(store.appendTimingIfOwned(SqlTraceEntry.timing(
+                "user1", "request-1", "page02", TIME.plusSeconds(1), 1, 2))).isFalse();
+    }
+
+    @Test
+    void appendTimingIfOwnedRejectsClearedOrForeignQueries() throws Exception {
+        store.append(query("user1", "request-1", "page01", "select 1"));
+        assertThat(store.appendTimingIfOwned(SqlTraceEntry.timing(
+                "user2", "request-1", "page01", TIME.plusSeconds(1), 1, 2)))
+                .isFalse();
+
+        store.append(SqlTraceEntry.clear("user1", "page01", TIME.plusSeconds(2)));
+        assertThat(store.appendTimingIfOwned(SqlTraceEntry.timing(
+                "user1", "request-1", "page01", TIME.plusSeconds(3), 1, 2)))
+                .isFalse();
+    }
+
+    @Test
+    void readsAllDatePartitionFilesInChronologicalOrder() throws Exception {
+        writeEntryFor(
+                LocalDate.of(2026, 6, 20),
+                query("user1", "request-old", "page01", "select old"));
+        writeEntryFor(
+                LocalDate.of(2026, 6, 25),
+                query("user1", "request-new", "page01", "select new"));
+
+        assertThat(store.find("user1", "page01"))
+                .extracting(SqlTraceEntry::sql)
+                .containsExactly("select old", "select new");
+    }
+
+    @Test
+    void skipsMalformedAndLegacyOwnerlessLines() throws Exception {
         Files.writeString(todayFile(), "{broken}\n", UTF_8, CREATE, APPEND);
-        store.append(entry("request-1", "page01", "select 1"));
+        Files.writeString(
+                todayFile(),
+                """
+                {"requestId":"legacy","pageId":"page01","sql":"select legacy"}
+                """,
+                UTF_8,
+                CREATE,
+                APPEND);
+        store.append(query("user1", "request-1", "page01", "select 1"));
 
-        assertThat(store.find("request-1", "page01"))
+        assertThat(store.find("user1", "page01"))
                 .extracting(SqlTraceEntry::sql)
                 .containsExactly("select 1");
     }
@@ -84,7 +169,8 @@ class JsonLineSqlTraceStoreTests {
             int current = index;
             executor.submit(() -> {
                 try {
-                    store.append(entry(
+                    store.append(query(
+                            "user1",
                             "request-" + current,
                             "page01",
                             "select " + current));
@@ -105,15 +191,13 @@ class JsonLineSqlTraceStoreTests {
     @Test
     void lookupWaitsForAnInProgressAppend() throws Exception {
         BlockingObjectMapper blockingMapper = new BlockingObjectMapper();
-        SqlTraceProperties properties = new SqlTraceProperties();
-        properties.setDirectory(tempDirectory);
-        JsonLineSqlTraceStore blockingStore =
-                new JsonLineSqlTraceStore(properties, blockingMapper, clock);
+        JsonLineSqlTraceStore blockingStore = newStore(blockingMapper);
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
         Future<?> append = executor.submit(() -> {
             try {
-                blockingStore.append(entry("request-1", "page01", "select 1"));
+                blockingStore.append(query(
+                        "user1", "request-1", "page01", "select 1"));
             } catch (java.io.IOException exception) {
                 throw new UncheckedIOException(exception);
             }
@@ -121,7 +205,7 @@ class JsonLineSqlTraceStoreTests {
         assertThat(blockingMapper.writeStarted.await(5, TimeUnit.SECONDS)).isTrue();
 
         Future<List<SqlTraceEntry>> lookup =
-                executor.submit(() -> blockingStore.find("request-1", "page01"));
+                executor.submit(() -> blockingStore.find("user1", "page01"));
         assertThatCode(() -> {
             try {
                 lookup.get(100, TimeUnit.MILLISECONDS);
@@ -137,13 +221,24 @@ class JsonLineSqlTraceStoreTests {
         executor.shutdownNow();
     }
 
-    private SqlTraceEntry entry(String requestId, String pageId, String sql) {
-        return new SqlTraceEntry(
-                requestId,
-                pageId,
-                OffsetDateTime.parse("2026-06-25T14:20:31+09:00"),
-                4,
-                sql);
+    private JsonLineSqlTraceStore newStore(ObjectMapper mapper) {
+        SqlTraceProperties properties = new SqlTraceProperties();
+        properties.setDirectory(tempDirectory);
+        return new JsonLineSqlTraceStore(properties, mapper, clock);
+    }
+
+    private SqlTraceEntry query(String username, String requestId, String pageId, String sql) {
+        return query(username, requestId, pageId, sql, TIME);
+    }
+
+    private SqlTraceEntry query(
+            String username,
+            String requestId,
+            String pageId,
+            String sql,
+            OffsetDateTime occurredAt) {
+        return SqlTraceEntry.query(
+                username, requestId, pageId, occurredAt, 4, sql);
     }
 
     private void writeEntryFor(LocalDate date, SqlTraceEntry entry) throws Exception {

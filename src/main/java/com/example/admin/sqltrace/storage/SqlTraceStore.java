@@ -7,5 +7,7 @@ public interface SqlTraceStore {
 
     void append(SqlTraceEntry entry) throws IOException;
 
-    List<SqlTraceEntry> find(String requestId, String pageId) throws IOException;
+    List<SqlTraceEntry> find(String username, String pageId) throws IOException;
+
+    boolean appendTimingIfOwned(SqlTraceEntry timing) throws IOException;
 }

@@ -1,5 +1,6 @@
 package com.example.admin.sqltrace.context;
 
+import com.example.admin.common.security.LoginUsers;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,6 +33,11 @@ public class SqlCaptureRequestFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
+        String username = LoginUsers.currentUsername().orElse(null);
+        if (!StringUtils.hasText(username)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         Boolean paused = parsePaused(request.getHeader(PAUSED_HEADER));
         if (paused == null) {
@@ -43,7 +49,11 @@ public class SqlCaptureRequestFilter extends OncePerRequestFilter {
 
         String requestId = UUID.randomUUID().toString();
         response.setHeader(REQUEST_ID_HEADER, requestId);
-        SqlCaptureContextHolder.set(new SqlCaptureContext(requestId, pageId.trim(), paused));
+        SqlCaptureContextHolder.set(new SqlCaptureContext(
+                username,
+                requestId,
+                pageId.trim(),
+                paused));
         try {
             filterChain.doFilter(request, response);
         } finally {

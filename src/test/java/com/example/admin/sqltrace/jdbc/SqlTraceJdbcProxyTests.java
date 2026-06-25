@@ -43,7 +43,7 @@ class SqlTraceJdbcProxyTests {
             statement.execute("insert into test_menu (id, name) values (1, 'Admin')");
         }
 
-        SqlCaptureContextHolder.set(new SqlCaptureContext("request-1", "page01", false));
+        SqlCaptureContextHolder.set(new SqlCaptureContext("user1", "request-1", "page01", false));
     }
 
     @AfterEach
@@ -62,7 +62,7 @@ class SqlTraceJdbcProxyTests {
 
         assertThat(store.entries).singleElement().satisfies(entry -> {
             assertThat(entry.sql()).contains("where name = 'Admin'");
-            assertThat(entry.elapsedMillis()).isGreaterThanOrEqualTo(0);
+            assertThat(entry.sqlElapsedMillis()).isGreaterThanOrEqualTo(0);
         });
     }
 
@@ -166,8 +166,13 @@ class SqlTraceJdbcProxyTests {
         }
 
         @Override
-        public List<SqlTraceEntry> find(String requestId, String pageId) {
+        public List<SqlTraceEntry> find(String username, String pageId) {
             return List.copyOf(entries);
+        }
+
+        @Override
+        public boolean appendTimingIfOwned(SqlTraceEntry timing) {
+            return false;
         }
     }
 
