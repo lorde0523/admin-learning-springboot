@@ -14,20 +14,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.example.admin.common.security.LoginUser;
+import com.example.admin.common.redis.RedisKey;
+import com.example.admin.common.redis.RedisStore;
 import com.example.admin.menu.entity.AdminMenu;
 import com.example.admin.menu.repository.AdminMenuRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Comparator;
+import java.io.IOException;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextImpl;
@@ -42,7 +48,6 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 class SqlTraceIntegrationTests {
 
     private static final AtomicLong IDS = new AtomicLong(900_000L);
-    private static final Path LOG_DIRECTORY = Path.of("./build/test-sql-trace");
 
     @Autowired
     private MockMvc mockMvc;
@@ -53,11 +58,14 @@ class SqlTraceIntegrationTests {
     @Autowired
     private AdminMenuRepository menuRepository;
 
+    @Autowired
+    private InMemoryRedisStore redisStore;
+
     private String menuName;
 
     @BeforeEach
     void setUp() throws Exception {
-        deleteLogDirectory();
+        redisStore.clear();
         long id = IDS.incrementAndGet();
         menuName = "Trace Paging " + id;
         menuRepository.save(AdminMenu.create(
@@ -118,7 +126,7 @@ class SqlTraceIntegrationTests {
 
         mockMvc.perform(delete("/api/sql-logs")
                         .with(login("user1"))
-                        .param("pageId", "page01"))
+                        .param("uiId", "page01"))
                 .andExpect(status().isNoContent());
         assertThat(listLogs("user1", "page01")).isEmpty();
 
@@ -138,7 +146,7 @@ class SqlTraceIntegrationTests {
                         .content("""
                                 {
                                   "requestId": "%s",
-                                  "pageId": "page01",
+                                  "uiId": "page01",
                                   "clientApiElapsedMillis": 35.2,
                                   "clientTotalElapsedMillis": 48.7
                                 }
@@ -157,7 +165,7 @@ class SqlTraceIntegrationTests {
     @Test
     void unauthenticatedAndUnidentifiedRequestsAreNotTraced() throws Exception {
         mockMvc.perform(get("/api/mybatis/menus/page")
-                        .header("X-Page-Id", "page01")
+                        .header("X-Ui-Id", "page01")
                         .header("X-Sql-Capture-Paused", "false")
                         .param("nameKeyword", menuName)
                         .param("page", "0")
@@ -166,7 +174,7 @@ class SqlTraceIntegrationTests {
                 .andExpect(header().doesNotExist("X-Request-Id"));
 
         mockMvc.perform(get("/api/sql-logs")
-                        .param("pageId", "page01"))
+                        .param("uiId", "page01"))
                 .andExpect(status().isUnauthorized());
 
         mockMvc.perform(post("/api/sql-logs/timing")
@@ -188,7 +196,7 @@ class SqlTraceIntegrationTests {
 
         MvcResult business = mockMvc.perform(get("/api/mybatis/menus/page")
                         .session(session)
-                        .header("X-Page-Id", "page01")
+                        .header("X-Ui-Id", "page01")
                         .header("X-Sql-Capture-Paused", "false")
                         .param("nameKeyword", menuName)
                         .param("page", "0")
@@ -204,7 +212,7 @@ class SqlTraceIntegrationTests {
                         .content("""
                                 {
                                   "requestId": "%s",
-                                  "pageId": "page01",
+                                  "uiId": "page01",
                                   "clientApiElapsedMillis": 10,
                                   "clientTotalElapsedMillis": 20
                                 }
@@ -213,18 +221,18 @@ class SqlTraceIntegrationTests {
 
         mockMvc.perform(get("/api/sql-logs")
                         .session(session)
-                        .param("pageId", "page01"))
+                        .param("uiId", "page01"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.logs").isNotEmpty())
                 .andExpect(jsonPath("$.logs[0].clientApiElapsedMillis").value(10));
 
         mockMvc.perform(delete("/api/sql-logs")
                         .session(session)
-                        .param("pageId", "page01"))
+                        .param("uiId", "page01"))
                 .andExpect(status().isNoContent());
         mockMvc.perform(get("/api/sql-logs")
                         .session(session)
-                        .param("pageId", "page01"))
+                        .param("uiId", "page01"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.logs", hasSize(0)));
     }
@@ -235,9 +243,9 @@ class SqlTraceIntegrationTests {
 
         mockMvc.perform(get("/api/sql-logs")
                         .with(login("user1"))
-                        .header("X-Page-Id", "page01")
+                        .header("X-Ui-Id", "page01")
                         .header("X-Sql-Capture-Paused", "false")
-                        .param("pageId", "page01"))
+                        .param("uiId", "page01"))
                 .andExpect(status().isOk())
                 .andExpect(header().doesNotExist("X-Request-Id"));
     }
@@ -249,7 +257,7 @@ class SqlTraceIntegrationTests {
             boolean paused) throws Exception {
         return mockMvc.perform(get(path)
                         .with(login(username))
-                        .header("X-Page-Id", pageId)
+                        .header("X-Ui-Id", pageId)
                         .header("X-Sql-Capture-Paused", Boolean.toString(paused))
                         .param("nameKeyword", menuName)
                         .param("page", "0")
@@ -266,7 +274,7 @@ class SqlTraceIntegrationTests {
     private JsonNode listLogs(String username, String pageId) throws Exception {
         String response = mockMvc.perform(get("/api/sql-logs")
                         .with(login(username))
-                        .param("pageId", pageId))
+                        .param("uiId", pageId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.logs[*].sql", not(containsString("?"))))
                 .andReturn()
@@ -283,14 +291,37 @@ class SqlTraceIntegrationTests {
                 loginUser.getAuthorities()));
     }
 
-    private void deleteLogDirectory() throws Exception {
-        if (Files.notExists(LOG_DIRECTORY)) {
-            return;
+    @TestConfiguration
+    static class RedisTestConfiguration {
+
+        @Bean
+        @Primary
+        InMemoryRedisStore inMemoryRedisStore() {
+            return new InMemoryRedisStore();
         }
-        try (var paths = Files.walk(LOG_DIRECTORY)) {
-            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(path);
-            }
+    }
+
+    static class InMemoryRedisStore implements RedisStore {
+
+        private final Map<String, String> values = new ConcurrentHashMap<>();
+
+        @Override
+        public Optional<String> get(RedisKey key) throws IOException {
+            return Optional.ofNullable(values.get(key.value()));
+        }
+
+        @Override
+        public void save(RedisKey key, String value) throws IOException {
+            values.put(key.value(), value);
+        }
+
+        @Override
+        public void delete(RedisKey key) throws IOException {
+            values.remove(key.value());
+        }
+
+        void clear() {
+            values.clear();
         }
     }
 }

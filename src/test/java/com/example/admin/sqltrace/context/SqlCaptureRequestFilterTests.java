@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.mock.web.MockFilterChain;
+import org.springframework.mock.web.MockCookie;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -39,16 +40,17 @@ class SqlCaptureRequestFilterTests {
     @Test
     void createsContextAndResponseHeaderForTrackedGetRequest() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/jpa/menus/page");
-        request.addHeader("X-Page-Id", "page01");
+        request.addHeader("X-Ui-Id", "page01");
         request.addHeader("X-Sql-Capture-Paused", "false");
+        request.setCookies(new MockCookie("LASTUSER", "last-user"));
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicReference<SqlCaptureContext> observed = new AtomicReference<>();
 
         filter.doFilter(request, response, (req, res) ->
                 observed.set(SqlCaptureContextHolder.current().orElseThrow()));
 
-        assertThat(observed.get().pageId()).isEqualTo("page01");
-        assertThat(observed.get().username()).isEqualTo("user1");
+        assertThat(observed.get().uiId()).isEqualTo("page01");
+        assertThat(observed.get().username()).isEqualTo("last-user");
         assertThat(observed.get().sqlCapturePaused()).isFalse();
         assertThat(response.getHeader("X-Request-Id")).isEqualTo(observed.get().requestId());
         assertThat(SqlCaptureContextHolder.current()).isEmpty();
@@ -57,15 +59,28 @@ class SqlCaptureRequestFilterTests {
     @Test
     void defaultsMissingPauseHeaderToCaptureEnabled() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/jpa/menus/page");
-        request.addHeader("X-Page-Id", " page01 ");
+        request.addHeader("X-Ui-Id", " page01 ");
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicReference<SqlCaptureContext> observed = new AtomicReference<>();
 
         filter.doFilter(request, response, (req, res) ->
                 observed.set(SqlCaptureContextHolder.current().orElseThrow()));
 
-        assertThat(observed.get().pageId()).isEqualTo("page01");
+        assertThat(observed.get().uiId()).isEqualTo("page01");
         assertThat(observed.get().sqlCapturePaused()).isFalse();
+    }
+
+    @Test
+    void fallsBackToAuthenticatedUsernameWithoutLastUserCookie() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/jpa/menus/page");
+        request.addHeader("X-Ui-Id", "page01");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicReference<SqlCaptureContext> observed = new AtomicReference<>();
+
+        filter.doFilter(request, response, (req, res) ->
+                observed.set(SqlCaptureContextHolder.current().orElseThrow()));
+
+        assertThat(observed.get().username()).isEqualTo("user1");
     }
 
     @Test
@@ -83,7 +98,7 @@ class SqlCaptureRequestFilterTests {
     void doesNotCreateContextWithoutAuthenticatedLoginUser() throws Exception {
         SecurityContextHolder.clearContext();
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/jpa/menus/page");
-        request.addHeader("X-Page-Id", "page01");
+        request.addHeader("X-Ui-Id", "page01");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilter(request, response, (req, res) ->
@@ -95,7 +110,7 @@ class SqlCaptureRequestFilterTests {
     @Test
     void rejectsInvalidPauseHeader() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/jpa/menus/page");
-        request.addHeader("X-Page-Id", "page01");
+        request.addHeader("X-Ui-Id", "page01");
         request.addHeader("X-Sql-Capture-Paused", "invalid");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -108,7 +123,7 @@ class SqlCaptureRequestFilterTests {
     @Test
     void clearsContextWhenDownstreamThrows() {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/jpa/menus/page");
-        request.addHeader("X-Page-Id", "page01");
+        request.addHeader("X-Ui-Id", "page01");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         try {
@@ -133,7 +148,7 @@ class SqlCaptureRequestFilterTests {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/admin/api/sql-logs");
         request.setContextPath("/admin");
         request.setServletPath("/api/sql-logs");
-        request.addHeader("X-Page-Id", "page01");
+        request.addHeader("X-Ui-Id", "page01");
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicReference<Optional<SqlCaptureContext>> observed = new AtomicReference<>();
 
@@ -146,7 +161,7 @@ class SqlCaptureRequestFilterTests {
 
     private Optional<SqlCaptureContext> runAndObserve(String method, String uri, String pageId) throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest(method, uri);
-        request.addHeader("X-Page-Id", pageId);
+        request.addHeader("X-Ui-Id", pageId);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicReference<Optional<SqlCaptureContext>> observed = new AtomicReference<>();
 

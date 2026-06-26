@@ -1,22 +1,23 @@
 package com.example.admin.sqltrace.config;
 
+import com.example.admin.common.redis.RedisStore;
+import com.example.admin.common.redis.StringRedisStore;
 import com.example.admin.sqltrace.context.SqlCaptureRequestFilter;
 import com.example.admin.sqltrace.jdbc.NoOpSqlValueMasker;
 import com.example.admin.sqltrace.jdbc.SqlParameterRenderer;
 import com.example.admin.sqltrace.jdbc.SqlTraceRecorder;
 import com.example.admin.sqltrace.jdbc.SqlValueMasker;
-import com.example.admin.sqltrace.storage.JsonLineSqlTraceStore;
+import com.example.admin.sqltrace.storage.RedisSqlTraceStore;
 import com.example.admin.sqltrace.storage.SqlTraceStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 @Configuration
-@EnableConfigurationProperties(SqlTraceProperties.class)
 @ConditionalOnProperty(name = "admin.sql-trace.enabled", havingValue = "true")
 public class SqlTraceConfiguration {
 
@@ -43,10 +44,14 @@ public class SqlTraceConfiguration {
 
     @Bean
     public SqlTraceStore sqlTraceStore(
-            SqlTraceProperties properties,
-            ObjectMapper objectMapper,
-            Clock sqlTraceClock) {
-        return new JsonLineSqlTraceStore(properties, objectMapper, sqlTraceClock);
+            RedisStore redisStore,
+            ObjectMapper objectMapper) {
+        return new RedisSqlTraceStore(redisStore, objectMapper);
+    }
+
+    @Bean
+    public StringRedisStore stringRedisStore(StringRedisTemplate redisTemplate) {
+        return new StringRedisStore(redisTemplate);
     }
 
     @Bean

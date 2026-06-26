@@ -26,6 +26,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockCookie;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -65,17 +66,20 @@ class SqlTraceControllerTests {
     void returnsAccumulatedRowsForCurrentUserAndPage() throws Exception {
         store.entries = List.of(query());
 
-        mockMvc.perform(get("/api/sql-logs").param("pageId", "page01"))
+        mockMvc.perform(get("/api/sql-logs")
+                        .cookie(new MockCookie("LASTUSER", "last-user"))
+                        .param("uiId", "page01"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.pageId", is("page01")))
+                .andExpect(jsonPath("$.uiId", is("page01")))
                 .andExpect(jsonPath("$.logs", hasSize(1)))
                 .andExpect(jsonPath("$.logs[0].requestId", is(REQUEST_ID)))
+                .andExpect(jsonPath("$.logs[0].uiId", is("page01")))
                 .andExpect(jsonPath("$.logs[0].sql", is("select 1")))
                 .andExpect(jsonPath("$.logs[0].sqlElapsedMillis").value(4))
                 .andExpect(jsonPath("$.logs[0].clientApiElapsedMillis").value(35.2))
                 .andExpect(jsonPath("$.logs[0].clientTotalElapsedMillis").value(48.7));
 
-        assertThat(store.lastFindUsername).isEqualTo("user1");
+        assertThat(store.lastFindUsername).isEqualTo("last-user");
         assertThat(store.lastFindPageId).isEqualTo("page01");
     }
 
@@ -83,8 +87,18 @@ class SqlTraceControllerTests {
     void rejectsUnauthenticatedListRequest() throws Exception {
         SecurityContextHolder.clearContext();
 
-        mockMvc.perform(get("/api/sql-logs").param("pageId", "page01"))
+        mockMvc.perform(get("/api/sql-logs").param("uiId", "page01"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void fallsBackToAuthenticatedUsernameWithoutLastUserCookie() throws Exception {
+        store.entries = List.of(query());
+
+        mockMvc.perform(get("/api/sql-logs").param("uiId", "page01"))
+                .andExpect(status().isOk());
+
+        assertThat(store.lastFindUsername).isEqualTo("user1");
     }
 
     @Test
@@ -130,7 +144,7 @@ class SqlTraceControllerTests {
                         .content("""
                                 {
                                   "requestId": "%s",
-                                  "pageId": "page01",
+                                  "uiId": "page01",
                                   "clientTotalElapsedMillis": 48.7
                                 }
                                 """.formatted(REQUEST_ID)))
@@ -141,7 +155,7 @@ class SqlTraceControllerTests {
                         .content("""
                                 {
                                   "requestId": "%s",
-                                  "pageId": "page01",
+                                  "uiId": "page01",
                                   "clientApiElapsedMillis": 50.0,
                                   "clientTotalElapsedMillis": 40.0
                                 }
@@ -156,7 +170,7 @@ class SqlTraceControllerTests {
                         .content("""
                                 {
                                   "requestId": "%s",
-                                  "pageId": "page01",
+                                  "uiId": "page01",
                                   "clientApiElapsedMillis": "NaN",
                                   "clientTotalElapsedMillis": 48.7
                                 }
@@ -168,7 +182,7 @@ class SqlTraceControllerTests {
                         .content("""
                                 {
                                   "requestId": "%s",
-                                  "pageId": "page01",
+                                  "uiId": "page01",
                                   "clientApiElapsedMillis": 35.2,
                                   "clientTotalElapsedMillis": "Infinity"
                                 }
@@ -177,22 +191,20 @@ class SqlTraceControllerTests {
     }
 
     @Test
-    void clearAppendsUserScopedMarker() throws Exception {
-        mockMvc.perform(delete("/api/sql-logs").param("pageId", "page01"))
+    void clearDeletesUserScopedLogs() throws Exception {
+        mockMvc.perform(delete("/api/sql-logs").param("uiId", "page01"))
                 .andExpect(status().isNoContent());
 
-        assertThat(store.appended).singleElement().satisfies(entry -> {
-            assertThat(entry.eventType()).isEqualTo(SqlTraceEventType.CLEAR);
-            assertThat(entry.username()).isEqualTo("user1");
-            assertThat(entry.pageId()).isEqualTo("page01");
-        });
+        assertThat(store.deletedUsername).isEqualTo("user1");
+        assertThat(store.deletedPageId).isEqualTo("page01");
+        assertThat(store.appended).isEmpty();
     }
 
     @Test
     void returnsServerErrorWhenFileReadFails() throws Exception {
         store.failure = new IOException("read failed");
 
-        mockMvc.perform(get("/api/sql-logs").param("pageId", "page01"))
+        mockMvc.perform(get("/api/sql-logs").param("uiId", "page01"))
                 .andExpect(status().isInternalServerError());
     }
 
@@ -217,6 +229,8 @@ class SqlTraceControllerTests {
         private boolean queryExists;
         private String lastFindUsername;
         private String lastFindPageId;
+        private String deletedUsername;
+        private String deletedPageId;
 
         @Override
         public void append(SqlTraceEntry entry) throws IOException {
@@ -246,6 +260,15 @@ class SqlTraceControllerTests {
             }
             appended.add(timing);
             return true;
+        }
+
+        @Override
+        public void delete(String username, String pageId) throws IOException {
+            if (failure != null) {
+                throw failure;
+            }
+            deletedUsername = username;
+            deletedPageId = pageId;
         }
     }
 }

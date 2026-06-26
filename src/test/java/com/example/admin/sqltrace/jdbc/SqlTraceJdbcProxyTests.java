@@ -174,6 +174,10 @@ class SqlTraceJdbcProxyTests {
         public boolean appendTimingIfOwned(SqlTraceEntry timing) {
             return false;
         }
+
+        @Override
+        public void delete(String username, String pageId) {
+        }
     }
 
     private static class CloseTrackingDataSource

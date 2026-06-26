@@ -6,7 +6,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 
 public record SqlTraceTimingRequest(
         @NotBlank String requestId,
-        @NotBlank String pageId,
+        @NotBlank String uiId,
         @NotNull @PositiveOrZero Double clientApiElapsedMillis,
         @NotNull @PositiveOrZero Double clientTotalElapsedMillis) {
 }

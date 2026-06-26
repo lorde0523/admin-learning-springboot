@@ -1,9 +1,11 @@
 package com.example.admin.sqltrace.api;
 
 import com.example.admin.common.security.LoginUsers;
+import com.example.admin.sqltrace.context.SqlTraceUserId;
 import com.example.admin.sqltrace.storage.SqlTraceEntry;
 import com.example.admin.sqltrace.storage.SqlTraceStore;
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.OffsetDateTime;
@@ -34,24 +36,26 @@ public class SqlTraceController {
     }
 
     @GetMapping("/api/sql-logs")
-    public SqlTraceLogResponse find(@RequestParam String pageId) {
-        String username = currentUsername();
-        String normalizedPageId = requirePageId(pageId);
+    public SqlTraceLogResponse find(@RequestParam String uiId, HttpServletRequest servletRequest) {
+        String username = currentUserId(servletRequest);
+        String normalizedUiId = requireUiId(uiId);
         try {
-            List<SqlTraceLogRow> rows = store.find(username, normalizedPageId).stream()
+            List<SqlTraceLogRow> rows = store.find(username, normalizedUiId).stream()
                     .map(this::toRow)
                     .toList();
-            return new SqlTraceLogResponse(normalizedPageId, rows);
+            return new SqlTraceLogResponse(normalizedUiId, rows);
         } catch (IOException exception) {
             throw storageFailure("Failed to read SQL trace logs.", exception);
         }
     }
 
     @PostMapping("/api/sql-logs/timing")
-    public ResponseEntity<Void> appendTiming(@Valid @RequestBody SqlTraceTimingRequest request) {
-        String username = currentUsername();
+    public ResponseEntity<Void> appendTiming(
+            @Valid @RequestBody SqlTraceTimingRequest request,
+            HttpServletRequest servletRequest) {
+        String username = currentUserId(servletRequest);
         String requestId = requireRequestId(request.requestId());
-        String pageId = requirePageId(request.pageId());
+        String uiId = requireUiId(request.uiId());
         if (!Double.isFinite(request.clientApiElapsedMillis())
                 || !Double.isFinite(request.clientTotalElapsedMillis())) {
             throw new ResponseStatusException(
@@ -67,7 +71,7 @@ public class SqlTraceController {
             boolean appended = store.appendTimingIfOwned(SqlTraceEntry.timing(
                     username,
                     requestId,
-                    pageId,
+                    uiId,
                     OffsetDateTime.now(clock),
                     request.clientApiElapsedMillis(),
                     request.clientTotalElapsedMillis()));
@@ -83,25 +87,23 @@ public class SqlTraceController {
     }
 
     @DeleteMapping("/api/sql-logs")
-    public ResponseEntity<Void> clear(@RequestParam String pageId) {
-        String username = currentUsername();
-        String normalizedPageId = requirePageId(pageId);
+    public ResponseEntity<Void> clear(@RequestParam String uiId, HttpServletRequest servletRequest) {
+        String username = currentUserId(servletRequest);
+        String normalizedUiId = requireUiId(uiId);
         try {
-            store.append(SqlTraceEntry.clear(
-                    username,
-                    normalizedPageId,
-                    OffsetDateTime.now(clock)));
+            store.delete(username, normalizedUiId);
             return ResponseEntity.noContent().build();
         } catch (IOException exception) {
             throw storageFailure("Failed to clear SQL trace logs.", exception);
         }
     }
 
-    private String currentUsername() {
-        return LoginUsers.currentUsername()
+    private String currentUserId(HttpServletRequest request) {
+        String authenticatedUsername = LoginUsers.currentUsername()
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.UNAUTHORIZED,
                         "Authentication is required."));
+        return SqlTraceUserId.resolve(request, authenticatedUsername);
     }
 
     private String requireRequestId(String requestId) {
@@ -119,11 +121,11 @@ public class SqlTraceController {
         }
     }
 
-    private String requirePageId(String pageId) {
-        if (!StringUtils.hasText(pageId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "pageId is required.");
+    private String requireUiId(String uiId) {
+        if (!StringUtils.hasText(uiId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "uiId is required.");
         }
-        return pageId.trim();
+        return uiId.trim();
     }
 
     private ResponseStatusException storageFailure(String message, IOException exception) {
@@ -136,7 +138,7 @@ public class SqlTraceController {
     private SqlTraceLogRow toRow(SqlTraceEntry entry) {
         return new SqlTraceLogRow(
                 entry.requestId(),
-                entry.pageId(),
+                entry.uiId(),
                 entry.occurredAt(),
                 entry.sqlElapsedMillis(),
                 entry.clientApiElapsedMillis(),

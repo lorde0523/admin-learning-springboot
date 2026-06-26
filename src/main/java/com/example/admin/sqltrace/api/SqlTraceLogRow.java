@@ -4,7 +4,7 @@ import java.time.OffsetDateTime;
 
 public record SqlTraceLogRow(
         String requestId,
-        String pageId,
+        String uiId,
         OffsetDateTime executedAt,
         long sqlElapsedMillis,
         Double clientApiElapsedMillis,

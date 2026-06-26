@@ -18,9 +18,6 @@ class SqlTraceConfigurationTests {
     @Autowired
     private SqlCaptureRequestFilter filter;
 
-    @Autowired
-    private SqlTraceProperties properties;
-
     @Test
     void wrapsApplicationDataSourceExactlyOnce() {
         assertThat(dataSource).isInstanceOf(SqlTraceDataSource.class);
@@ -29,14 +26,7 @@ class SqlTraceConfigurationTests {
     }
 
     @Test
-    void registersFilterAndConfiguredLocalDirectory() {
+    void registersFilter() {
         assertThat(filter).isNotNull();
-        assertThat(properties.getDirectory().normalize())
-                .isEqualTo(java.nio.file.Path.of("build/test-sql-trace"));
-    }
-
-    @Test
-    void tracingIsDisabledByDefaultOutsideExplicitConfiguration() {
-        assertThat(new SqlTraceProperties().isEnabled()).isFalse();
     }
 }

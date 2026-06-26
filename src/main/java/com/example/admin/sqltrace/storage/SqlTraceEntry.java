@@ -6,7 +6,7 @@ public record SqlTraceEntry(
         SqlTraceEventType eventType,
         String username,
         String requestId,
-        String pageId,
+        String uiId,
         OffsetDateTime occurredAt,
         Long sqlElapsedMillis,
         String sql,
@@ -16,7 +16,7 @@ public record SqlTraceEntry(
     public static SqlTraceEntry query(
             String username,
             String requestId,
-            String pageId,
+            String uiId,
             OffsetDateTime occurredAt,
             long sqlElapsedMillis,
             String sql) {
@@ -24,7 +24,7 @@ public record SqlTraceEntry(
                 SqlTraceEventType.QUERY,
                 username,
                 requestId,
-                pageId,
+                uiId,
                 occurredAt,
                 sqlElapsedMillis,
                 sql,
@@ -35,7 +35,7 @@ public record SqlTraceEntry(
     public static SqlTraceEntry timing(
             String username,
             String requestId,
-            String pageId,
+            String uiId,
             OffsetDateTime occurredAt,
             double clientApiElapsedMillis,
             double clientTotalElapsedMillis) {
@@ -43,28 +43,12 @@ public record SqlTraceEntry(
                 SqlTraceEventType.TIMING,
                 username,
                 requestId,
-                pageId,
+                uiId,
                 occurredAt,
                 null,
                 null,
                 clientApiElapsedMillis,
                 clientTotalElapsedMillis);
-    }
-
-    public static SqlTraceEntry clear(
-            String username,
-            String pageId,
-            OffsetDateTime occurredAt) {
-        return new SqlTraceEntry(
-                SqlTraceEventType.CLEAR,
-                username,
-                null,
-                pageId,
-                occurredAt,
-                null,
-                null,
-                null,
-                null);
     }
 
     public SqlTraceEntry withTiming(SqlTraceEntry timing) {
@@ -75,7 +59,7 @@ public record SqlTraceEntry(
                 eventType,
                 username,
                 requestId,
-                pageId,
+                uiId,
                 occurredAt,
                 sqlElapsedMillis,
                 sql,

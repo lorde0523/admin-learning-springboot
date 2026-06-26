@@ -13,7 +13,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 public class SqlCaptureRequestFilter extends OncePerRequestFilter {
 
-    public static final String PAGE_ID_HEADER = "X-Page-Id";
+    public static final String UI_ID_HEADER = "X-Ui-Id";
+    public static final String LEGACY_PAGE_ID_HEADER = "X-Page-Id";
     public static final String PAUSED_HEADER = "X-Sql-Capture-Paused";
     public static final String REQUEST_ID_HEADER = "X-Request-Id";
 
@@ -28,16 +29,20 @@ public class SqlCaptureRequestFilter extends OncePerRequestFilter {
             return;
         }
 
-        String pageId = request.getHeader(PAGE_ID_HEADER);
-        if (!StringUtils.hasText(pageId)) {
+        String uiId = request.getHeader(UI_ID_HEADER);
+        if (!StringUtils.hasText(uiId)) {
+            uiId = request.getHeader(LEGACY_PAGE_ID_HEADER);
+        }
+        if (!StringUtils.hasText(uiId)) {
             filterChain.doFilter(request, response);
             return;
         }
-        String username = LoginUsers.currentUsername().orElse(null);
-        if (!StringUtils.hasText(username)) {
+        String authenticatedUsername = LoginUsers.currentUsername().orElse(null);
+        if (!StringUtils.hasText(authenticatedUsername)) {
             filterChain.doFilter(request, response);
             return;
         }
+        String userId = SqlTraceUserId.resolve(request, authenticatedUsername);
 
         Boolean paused = parsePaused(request.getHeader(PAUSED_HEADER));
         if (paused == null) {
@@ -50,9 +55,9 @@ public class SqlCaptureRequestFilter extends OncePerRequestFilter {
         String requestId = UUID.randomUUID().toString();
         response.setHeader(REQUEST_ID_HEADER, requestId);
         SqlCaptureContextHolder.set(new SqlCaptureContext(
-                username,
+                userId,
                 requestId,
-                pageId.trim(),
+                uiId.trim(),
                 paused));
         try {
             filterChain.doFilter(request, response);

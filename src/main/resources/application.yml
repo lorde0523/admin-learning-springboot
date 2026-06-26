@@ -28,4 +28,3 @@ springdoc:
 admin:
   sql-trace:
     enabled: ${SQL_TRACE_ENABLED:false}
-    directory: ${SQL_TRACE_DIRECTORY:./logs/sql-trace}

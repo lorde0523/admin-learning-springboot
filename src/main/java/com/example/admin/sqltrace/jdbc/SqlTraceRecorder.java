@@ -38,7 +38,7 @@ public class SqlTraceRecorder {
         SqlTraceEntry entry = SqlTraceEntry.query(
                 context.username(),
                 context.requestId(),
-                context.pageId(),
+                context.uiId(),
                 executedAt,
                 TimeUnit.NANOSECONDS.toMillis(elapsedNanos),
                 renderer.render(sql, parameters));
@@ -46,9 +46,9 @@ public class SqlTraceRecorder {
             store.append(entry);
         } catch (IOException exception) {
             log.warn(
-                    "Failed to append SQL trace. requestId={} pageId={}",
+                    "Failed to append SQL trace. requestId={} uiId={}",
                     entry.requestId(),
-                    entry.pageId(),
+                    entry.uiId(),
                     exception);
         }
     }

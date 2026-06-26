@@ -42,7 +42,7 @@ class SqlTraceRecorderTests {
 
         assertThat(store.entries).singleElement().satisfies(entry -> {
             assertThat(entry.requestId()).isEqualTo("request-1");
-            assertThat(entry.pageId()).isEqualTo("page01");
+            assertThat(entry.uiId()).isEqualTo("page01");
             assertThat(entry.sqlElapsedMillis()).isEqualTo(12);
             assertThat(entry.sql()).contains("menu_name = 'Admin'");
         });
@@ -108,6 +108,10 @@ class SqlTraceRecorderTests {
         @Override
         public boolean appendTimingIfOwned(SqlTraceEntry timing) {
             return false;
+        }
+
+        @Override
+        public void delete(String username, String pageId) {
         }
     }
 }

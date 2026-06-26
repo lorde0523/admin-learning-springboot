@@ -19,4 +19,3 @@ mybatis:
 admin:
   sql-trace:
     enabled: true
-    directory: ./build/test-sql-trace
