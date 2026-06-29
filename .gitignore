@@ -4,3 +4,7 @@ build/
 *.iml
 out/
 .worktrees/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/*.log
