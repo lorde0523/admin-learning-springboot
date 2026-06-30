@@ -20,10 +20,13 @@ import com.example.admin.menu.entity.AdminMenu;
 import com.example.admin.menu.repository.AdminMenuRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
@@ -82,11 +85,17 @@ class SqlTraceIntegrationTests {
         trackedGet("/api/mybatis/menus/page", "user1", "page01", false);
         int firstCount = listLogs("user1", "page01").size();
 
-        trackedGet("/api/mybatis/menus/page", "user1", "page01", false);
+        String latestApiStartedAt = trackedGet(
+                "/api/mybatis/menus/page", "user1", "page01", false)
+                .getResponse()
+                .getHeader("X-Api-Started-At");
         JsonNode accumulated = listLogs("user1", "page01");
 
         assertThat(firstCount).isPositive();
         assertThat(accumulated.size()).isGreaterThan(firstCount);
+        assertThat(OffsetDateTime.parse(accumulated.get(0).get("apiStartedAt").asText()))
+                .isEqualTo(OffsetDateTime.parse(latestApiStartedAt));
+        assertThat(accumulated.toString()).contains(menuName);
         assertThat(accumulated.toString()).doesNotContain("?");
     }
 
@@ -98,6 +107,7 @@ class SqlTraceIntegrationTests {
 
         assertThat(logs).isNotEmpty();
         assertThat(logs.toString().toLowerCase()).contains("admin_menu");
+        assertThat(logs.toString()).contains(menuName);
         assertThat(logs.toString()).doesNotContain("?");
     }
 
@@ -126,6 +136,7 @@ class SqlTraceIntegrationTests {
 
         mockMvc.perform(delete("/api/sql-logs")
                         .with(login("user1"))
+                        .param("traceType", "query")
                         .param("uiId", "page01"))
                 .andExpect(status().isNoContent());
         assertThat(listLogs("user1", "page01")).isEmpty();
@@ -138,26 +149,28 @@ class SqlTraceIntegrationTests {
     void clientTimingIsCombinedWithEverySqlFromTheBusinessRequest() throws Exception {
         MvcResult result = trackedGet(
                 "/api/mybatis/menus/page", "user1", "page01", false);
-        String requestId = result.getResponse().getHeader("X-Request-Id");
+        String apiStartedAt = result.getResponse().getHeader("X-Api-Started-At");
 
         mockMvc.perform(post("/api/sql-logs/timing")
                         .with(login("user1"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "requestId": "%s",
+                                  "traceType": "query",
+                                  "apiStartedAt": "%s",
                                   "uiId": "page01",
-                                  "clientApiElapsedMillis": 35.2,
-                                  "clientTotalElapsedMillis": 48.7
+                                  "clientTimeMillis": 35.2,
+                                  "totalTimeMillis": 48.7
                                 }
-                                """.formatted(requestId)))
+                                """.formatted(apiStartedAt)))
                 .andExpect(status().isNoContent());
 
         JsonNode logs = listLogs("user1", "page01");
         for (JsonNode log : logs) {
-            if (requestId.equals(log.get("requestId").asText())) {
-                assertThat(log.get("clientApiElapsedMillis").asDouble()).isEqualTo(35.2);
-                assertThat(log.get("clientTotalElapsedMillis").asDouble()).isEqualTo(48.7);
+            if (apiStartedAt.equals(log.get("apiStartedAt").asText())) {
+                assertThat(log.get("serverTimeMillis").isNumber()).isTrue();
+                assertThat(log.get("clientTimeMillis").asDouble()).isEqualTo(35.2);
+                assertThat(log.get("totalTimeMillis").asDouble()).isEqualTo(48.7);
             }
         }
     }
@@ -165,15 +178,17 @@ class SqlTraceIntegrationTests {
     @Test
     void unauthenticatedAndUnidentifiedRequestsAreNotTraced() throws Exception {
         mockMvc.perform(get("/api/mybatis/menus/page")
+                        .header("X-Trace-Type", "query")
                         .header("X-Ui-Id", "page01")
                         .header("X-Sql-Capture-Paused", "false")
                         .param("nameKeyword", menuName)
                         .param("page", "0")
                         .param("size", "2"))
                 .andExpect(status().isOk())
-                .andExpect(header().doesNotExist("X-Request-Id"));
+                .andExpect(header().doesNotExist("X-Api-Started-At"));
 
         mockMvc.perform(get("/api/sql-logs")
+                        .param("traceType", "query")
                         .param("uiId", "page01"))
                 .andExpect(status().isUnauthorized());
 
@@ -196,42 +211,47 @@ class SqlTraceIntegrationTests {
 
         MvcResult business = mockMvc.perform(get("/api/mybatis/menus/page")
                         .session(session)
+                        .header("X-Trace-Type", "query")
                         .header("X-Ui-Id", "page01")
                         .header("X-Sql-Capture-Paused", "false")
                         .param("nameKeyword", menuName)
                         .param("page", "0")
                         .param("size", "2"))
                 .andExpect(status().isOk())
-                .andExpect(header().exists("X-Request-Id"))
+                .andExpect(header().exists("X-Api-Started-At"))
                 .andReturn();
 
-        String requestId = business.getResponse().getHeader("X-Request-Id");
+        String apiStartedAt = business.getResponse().getHeader("X-Api-Started-At");
         mockMvc.perform(post("/api/sql-logs/timing")
                         .session(session)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "requestId": "%s",
+                                  "traceType": "query",
+                                  "apiStartedAt": "%s",
                                   "uiId": "page01",
-                                  "clientApiElapsedMillis": 10,
-                                  "clientTotalElapsedMillis": 20
+                                  "clientTimeMillis": 10,
+                                  "totalTimeMillis": 20
                                 }
-                                """.formatted(requestId)))
+                                """.formatted(apiStartedAt)))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/sql-logs")
                         .session(session)
+                        .param("traceType", "query")
                         .param("uiId", "page01"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.logs").isNotEmpty())
-                .andExpect(jsonPath("$.logs[0].clientApiElapsedMillis").value(10));
+                .andExpect(jsonPath("$.logs[0].clientTimeMillis").value(10));
 
         mockMvc.perform(delete("/api/sql-logs")
                         .session(session)
+                        .param("traceType", "query")
                         .param("uiId", "page01"))
                 .andExpect(status().isNoContent());
         mockMvc.perform(get("/api/sql-logs")
                         .session(session)
+                        .param("traceType", "query")
                         .param("uiId", "page01"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.logs", hasSize(0)));
@@ -243,11 +263,13 @@ class SqlTraceIntegrationTests {
 
         mockMvc.perform(get("/api/sql-logs")
                         .with(login("user1"))
+                        .header("X-Trace-Type", "query")
                         .header("X-Ui-Id", "page01")
                         .header("X-Sql-Capture-Paused", "false")
+                        .param("traceType", "query")
                         .param("uiId", "page01"))
                 .andExpect(status().isOk())
-                .andExpect(header().doesNotExist("X-Request-Id"));
+                .andExpect(header().doesNotExist("X-Api-Started-At"));
     }
 
     private MvcResult trackedGet(
@@ -257,6 +279,7 @@ class SqlTraceIntegrationTests {
             boolean paused) throws Exception {
         return mockMvc.perform(get(path)
                         .with(login(username))
+                        .header("X-Trace-Type", "query")
                         .header("X-Ui-Id", pageId)
                         .header("X-Sql-Capture-Paused", Boolean.toString(paused))
                         .param("nameKeyword", menuName)
@@ -274,6 +297,7 @@ class SqlTraceIntegrationTests {
     private JsonNode listLogs(String username, String pageId) throws Exception {
         String response = mockMvc.perform(get("/api/sql-logs")
                         .with(login(username))
+                        .param("traceType", "query")
                         .param("uiId", pageId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.logs[*].sql", not(containsString("?"))))
@@ -297,31 +321,66 @@ class SqlTraceIntegrationTests {
         @Bean
         @Primary
         InMemoryRedisStore inMemoryRedisStore() {
-            return new InMemoryRedisStore();
+            return new InMemoryRedisStore(new ObjectMapper().findAndRegisterModules());
         }
     }
 
     static class InMemoryRedisStore implements RedisStore {
 
-        private final Map<String, String> values = new ConcurrentHashMap<>();
+        private final Map<String, List<String>> lists = new ConcurrentHashMap<>();
+        private final ObjectMapper objectMapper;
 
-        @Override
-        public Optional<String> get(RedisKey key) throws IOException {
-            return Optional.ofNullable(values.get(key.value()));
+        private InMemoryRedisStore(ObjectMapper objectMapper) {
+            this.objectMapper = objectMapper;
         }
 
         @Override
-        public void save(RedisKey key, String value) throws IOException {
-            values.put(key.value(), value);
+        public void append(RedisKey key, String value, Duration ttl) throws IOException {
+            lists.computeIfAbsent(
+                    key.value(),
+                    ignored -> java.util.Collections.synchronizedList(new ArrayList<>()))
+                    .add(0, value);
+        }
+
+        @Override
+        public List<String> findAll(RedisKey key) throws IOException {
+            return List.copyOf(lists.getOrDefault(key.value(), List.of()));
+        }
+
+        @Override
+        public long updateByApiStartedAt(
+                RedisKey key,
+                String apiStartedAt,
+                String updatesJson,
+                Duration ttl) throws IOException {
+            List<String> values = lists.get(key.value());
+            if (values == null) {
+                return 0;
+            }
+            JsonNode updates = objectMapper.readTree(updatesJson);
+            long updated = 0;
+            synchronized (values) {
+                for (int index = 0; index < values.size(); index++) {
+                    ObjectNode entry = (ObjectNode) objectMapper.readTree(values.get(index));
+                    if (!apiStartedAt.equals(entry.path("apiStartedAt").asText())) {
+                        continue;
+                    }
+                    updates.properties().forEach(field ->
+                            entry.set(field.getKey(), field.getValue()));
+                    values.set(index, objectMapper.writeValueAsString(entry));
+                    updated++;
+                }
+            }
+            return updated;
         }
 
         @Override
         public void delete(RedisKey key) throws IOException {
-            values.remove(key.value());
+            lists.remove(key.value());
         }
 
         void clear() {
-            values.clear();
+            lists.clear();
         }
     }
 }

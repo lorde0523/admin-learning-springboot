@@ -62,7 +62,9 @@ public class SqlTraceConfiguration {
     }
 
     @Bean
-    public SqlCaptureRequestFilter sqlCaptureRequestFilter() {
-        return new SqlCaptureRequestFilter();
+    public SqlCaptureRequestFilter sqlCaptureRequestFilter(
+            SqlTraceStore store,
+            Clock sqlTraceClock) {
+        return new SqlCaptureRequestFilter(store, sqlTraceClock);
     }
 }

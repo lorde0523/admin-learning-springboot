@@ -5,8 +5,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 
 public record SqlTraceTimingRequest(
-        @NotBlank String requestId,
+        @NotBlank String traceType,
+        @NotBlank String apiStartedAt,
         @NotBlank String uiId,
-        @NotNull @PositiveOrZero Double clientApiElapsedMillis,
-        @NotNull @PositiveOrZero Double clientTotalElapsedMillis) {
+        @NotNull @PositiveOrZero Double clientTimeMillis,
+        @NotNull @PositiveOrZero Double totalTimeMillis) {
 }

@@ -1,8 +1,11 @@
 package com.example.admin.sqltrace.context;
 
+import java.time.OffsetDateTime;
+
 public record SqlCaptureContext(
-        String username,
-        String requestId,
+        SqlTraceType traceType,
+        String userId,
+        OffsetDateTime apiStartedAt,
         String uiId,
         boolean sqlCapturePaused) {
 }

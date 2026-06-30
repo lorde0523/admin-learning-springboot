@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.example.admin.sqltrace.context.SqlCaptureContext;
 import com.example.admin.sqltrace.context.SqlCaptureContextHolder;
+import com.example.admin.sqltrace.context.SqlTraceType;
 import com.example.admin.sqltrace.storage.SqlTraceEntry;
 import com.example.admin.sqltrace.storage.SqlTraceStore;
 import java.io.IOException;
@@ -32,7 +33,7 @@ class SqlTraceRecorderTests {
 
     @Test
     void recordsRenderedSqlForActiveContext() {
-        SqlCaptureContextHolder.set(new SqlCaptureContext("user1", "request-1", "page01", false));
+        SqlCaptureContextHolder.set(context(false));
 
         recorder.record(
                 "select * from admin_menu where menu_name = ?",
@@ -41,7 +42,7 @@ class SqlTraceRecorderTests {
                 NOW);
 
         assertThat(store.entries).singleElement().satisfies(entry -> {
-            assertThat(entry.requestId()).isEqualTo("request-1");
+            assertThat(entry.apiStartedAt()).isEqualTo(NOW);
             assertThat(entry.uiId()).isEqualTo("page01");
             assertThat(entry.sqlElapsedMillis()).isEqualTo(12);
             assertThat(entry.sql()).contains("menu_name = 'Admin'");
@@ -53,7 +54,7 @@ class SqlTraceRecorderTests {
         recorder.record("select 1", Map.of(), 1_000_000L, NOW);
         assertThat(store.entries).isEmpty();
 
-        SqlCaptureContextHolder.set(new SqlCaptureContext("user1", "request-1", "page01", true));
+        SqlCaptureContextHolder.set(context(true));
         recorder.record("select 1", Map.of(), 1_000_000L, NOW);
         assertThat(store.entries).isEmpty();
     }
@@ -61,7 +62,7 @@ class SqlTraceRecorderTests {
     @Test
     void storageFailureDoesNotEscape() {
         store.failure = new IOException("disk full");
-        SqlCaptureContextHolder.set(new SqlCaptureContext("user1", "request-1", "page01", false));
+        SqlCaptureContextHolder.set(context(false));
 
         assertThatCode(() -> recorder.record("select 1", Map.of(), 1_000_000L, NOW))
                 .doesNotThrowAnyException();
@@ -69,7 +70,7 @@ class SqlTraceRecorderTests {
 
     @Test
     void skipsNonSelectSqlEvenWithActiveContext() {
-        SqlCaptureContextHolder.set(new SqlCaptureContext("user1", "request-1", "page01", false));
+        SqlCaptureContextHolder.set(context(false));
 
         recorder.record("update admin_menu set enabled = false", Map.of(), 1_000_000L, NOW);
         recorder.record("call some_procedure()", Map.of(), 1_000_000L, NOW);
@@ -79,12 +80,21 @@ class SqlTraceRecorderTests {
 
     @Test
     void recordsSelectAndCommonTableExpressionQueries() {
-        SqlCaptureContextHolder.set(new SqlCaptureContext("user1", "request-1", "page01", false));
+        SqlCaptureContextHolder.set(context(false));
 
         recorder.record("  SELECT 1", Map.of(), 1_000_000L, NOW);
         recorder.record("with menu_rows as (select 1) select * from menu_rows", Map.of(), 1_000_000L, NOW);
 
         assertThat(store.entries).hasSize(2);
+    }
+
+    private SqlCaptureContext context(boolean paused) {
+        return new SqlCaptureContext(
+                SqlTraceType.QUERY,
+                "user1",
+                NOW,
+                "page01",
+                paused);
     }
 
     private static class CapturingStore implements SqlTraceStore {
@@ -101,17 +111,36 @@ class SqlTraceRecorderTests {
         }
 
         @Override
-        public List<SqlTraceEntry> find(String username, String pageId) {
+        public List<SqlTraceEntry> find(
+                SqlTraceType traceType,
+                String username,
+                String pageId) {
             return List.of();
         }
 
         @Override
-        public boolean appendTimingIfOwned(SqlTraceEntry timing) {
-            return false;
+        public long updateServerTiming(
+                SqlTraceType traceType,
+                String userId,
+                String uiId,
+                OffsetDateTime apiStartedAt,
+                long serverTimeMillis) {
+            return 0;
         }
 
         @Override
-        public void delete(String username, String pageId) {
+        public long updateClientTiming(
+                SqlTraceType traceType,
+                String userId,
+                String uiId,
+                OffsetDateTime apiStartedAt,
+                double clientTimeMillis,
+                double totalTimeMillis) {
+            return 0;
+        }
+
+        @Override
+        public void delete(SqlTraceType traceType, String username, String pageId) {
         }
     }
 }

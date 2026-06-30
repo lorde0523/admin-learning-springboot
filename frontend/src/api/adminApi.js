@@ -41,12 +41,13 @@ export const createAdminApi = (client) => ({
       client.post('/api/jpa/menus/grid-save', changeSet).then(data),
   },
   sqlLogs: {
-    list: (uiId) => client.get('/api/sql-logs', { params: { uiId } }).then(data),
-    clear: (uiId) => client.delete('/api/sql-logs', { params: { uiId } }).then(data),
+    list: (uiId) =>
+      client.get('/api/sql-logs', { params: { traceType: 'query', uiId } }).then(data),
+    clear: (uiId) =>
+      client.delete('/api/sql-logs', { params: { traceType: 'query', uiId } }).then(data),
     saveTiming: (request) =>
       client.post('/api/sql-logs/timing', request).then(data),
   },
 });
 
 export const adminApi = createAdminApi(httpClient);
-

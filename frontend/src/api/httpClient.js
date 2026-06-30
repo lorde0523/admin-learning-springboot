@@ -4,6 +4,14 @@ import { getUiId } from '../routes/uiIdRegistry';
 import { publishResponse } from './requestInspectorStore';
 
 const isSqlLogRequest = (url = '') => url.startsWith('/api/sql-logs');
+const TRACE_TYPE = 'query';
+const afterNextPaint = (callback) => {
+  if (typeof requestAnimationFrame !== 'function') {
+    setTimeout(callback, 0);
+    return;
+  }
+  requestAnimationFrame(() => requestAnimationFrame(callback));
+};
 const sendTiming = (request) =>
   axios.post('/api/sql-logs/timing', request, { withCredentials: true }).catch(() => undefined);
 
@@ -17,6 +25,7 @@ export const createHttpClient = ({
   onResponse = publishResponse,
   onTiming = sendTiming,
   now = () => performance.now(),
+  afterRender = afterNextPaint,
 } = {}) => {
   const client = axios.create({
     withCredentials: true,
@@ -30,6 +39,7 @@ export const createHttpClient = ({
       return config;
     }
 
+    config.headers.set('X-Trace-Type', TRACE_TYPE);
     config.headers.set('X-Ui-Id', getUiId(getPathname()));
 
     if (isSqlLogRequest(config.url)) {
@@ -42,27 +52,32 @@ export const createHttpClient = ({
   client.interceptors.response.use(
     (response) => {
       const elapsedMillis = Math.round(now() - response.config.requestStartedAt);
-      const requestId = response.headers?.get?.('x-request-id')
-        ?? response.headers?.['x-request-id'];
       onResponse({
         method: response.config.method?.toUpperCase(),
         url: response.config.url,
         status: response.status,
         elapsedMillis,
-        requestId,
         data: response.data,
       });
 
+      const apiStartedAt = response.headers?.get?.('x-api-started-at')
+        ?? response.headers?.['x-api-started-at'];
       if (
         response.config.method?.toLowerCase() === 'get'
-        && requestId
+        && apiStartedAt
         && !isSqlLogRequest(response.config.url)
       ) {
-        onTiming({
-          requestId,
-          uiId: getUiId(getPathname()),
-          clientApiElapsedMillis: elapsedMillis,
-          clientTotalElapsedMillis: elapsedMillis,
+        afterRender(() => {
+          const totalTimeMillis = Math.round(
+            now() - response.config.requestStartedAt,
+          );
+          onTiming({
+            traceType: TRACE_TYPE,
+            apiStartedAt,
+            uiId: getUiId(getPathname()),
+            clientTimeMillis: Math.max(0, totalTimeMillis - elapsedMillis),
+            totalTimeMillis,
+          });
         });
       }
       return response;

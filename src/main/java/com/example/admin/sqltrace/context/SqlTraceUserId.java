@@ -1,33 +1,30 @@
 package com.example.admin.sqltrace.context;
 
-import jakarta.servlet.http.Cookie;
+import com.example.admin.common.security.LoginUsers;
 import jakarta.servlet.http.HttpServletRequest;
-import java.util.Arrays;
 import java.util.Optional;
 import org.springframework.util.StringUtils;
 
 public final class SqlTraceUserId {
 
-    public static final String LAST_USER_COOKIE = "LASTUSER";
+    public static final String USER_ID_ATTRIBUTE = "USER_ID";
 
     private SqlTraceUserId() {
     }
 
-    public static String resolve(HttpServletRequest request, String authenticatedUsername) {
-        return lastUserCookie(request)
+    public static Optional<String> resolve(HttpServletRequest request) {
+        return LoginUsers.currentUsername()
                 .filter(StringUtils::hasText)
                 .map(String::trim)
-                .orElse(authenticatedUsername);
+                .or(() -> requestAttribute(request));
     }
 
-    private static Optional<String> lastUserCookie(HttpServletRequest request) {
-        Cookie[] cookies = request.getCookies();
-        if (cookies == null) {
-            return Optional.empty();
-        }
-        return Arrays.stream(cookies)
-                .filter(cookie -> LAST_USER_COOKIE.equals(cookie.getName()))
-                .map(Cookie::getValue)
-                .findFirst();
+    private static Optional<String> requestAttribute(HttpServletRequest request) {
+        Object value = request.getAttribute(USER_ID_ATTRIBUTE);
+        return value == null
+                ? Optional.empty()
+                : Optional.of(value.toString())
+                        .filter(StringUtils::hasText)
+                        .map(String::trim);
     }
 }

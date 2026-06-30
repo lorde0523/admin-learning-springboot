@@ -1,13 +1,17 @@
 package com.example.admin.sqltrace.api;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import java.time.OffsetDateTime;
 
 public record SqlTraceLogRow(
-        String requestId,
+        @JsonFormat(shape = JsonFormat.Shape.STRING)
+        OffsetDateTime apiStartedAt,
         String uiId,
+        @JsonFormat(shape = JsonFormat.Shape.STRING)
         OffsetDateTime executedAt,
         long sqlElapsedMillis,
-        Double clientApiElapsedMillis,
-        Double clientTotalElapsedMillis,
+        Long serverTimeMillis,
+        Double clientTimeMillis,
+        Double totalTimeMillis,
         String sql) {
 }

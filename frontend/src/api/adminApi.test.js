@@ -40,4 +40,19 @@ describe('createAdminApi', () => {
       params: criteria,
     });
   });
+
+  it('identifies SQL log resources by trace type and UI ID', async () => {
+    const client = createClient();
+    const api = createAdminApi(client);
+
+    await api.sqlLogs.list('users-workbench');
+    await api.sqlLogs.clear('users-workbench');
+
+    expect(client.get).toHaveBeenCalledWith('/api/sql-logs', {
+      params: { traceType: 'query', uiId: 'users-workbench' },
+    });
+    expect(client.delete).toHaveBeenCalledWith('/api/sql-logs', {
+      params: { traceType: 'query', uiId: 'users-workbench' },
+    });
+  });
 });

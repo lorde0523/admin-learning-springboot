@@ -1,8 +1,8 @@
 package com.example.admin.sqltrace.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -11,22 +11,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.example.admin.common.exception.ApiExceptionHandler;
 import com.example.admin.common.security.LoginUser;
+import com.example.admin.sqltrace.context.SqlTraceType;
 import com.example.admin.sqltrace.storage.SqlTraceEntry;
-import com.example.admin.sqltrace.storage.SqlTraceEventType;
 import com.example.admin.sqltrace.storage.SqlTraceStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import java.time.Clock;
-import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
-import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockCookie;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -34,9 +29,10 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class SqlTraceControllerTests {
 
-    private static final String REQUEST_ID = "2de4a7d7-1453-4652-85dd-ef8ddfa57467";
-    private static final OffsetDateTime NOW =
-            OffsetDateTime.parse("2026-06-25T14:20:31+09:00");
+    private static final OffsetDateTime API_STARTED_AT =
+            OffsetDateTime.parse("2026-07-01T10:30:15.100+09:00");
+    private static final OffsetDateTime EXECUTED_AT =
+            OffsetDateTime.parse("2026-07-01T10:30:15.200+09:00");
 
     private final StubStore store = new StubStore();
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
@@ -50,9 +46,8 @@ class SqlTraceControllerTests {
                         loginUser,
                         "",
                         loginUser.getAuthorities()));
-        Clock clock = Clock.fixed(Instant.parse("2026-06-25T05:20:31Z"), ZoneId.of("Asia/Seoul"));
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new SqlTraceController(store, clock))
+                .standaloneSetup(new SqlTraceController(store))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
     }
@@ -63,212 +58,229 @@ class SqlTraceControllerTests {
     }
 
     @Test
-    void returnsAccumulatedRowsForCurrentUserAndPage() throws Exception {
-        store.entries = List.of(query());
+    void returnsNewestSqlObjectsWithServerAndClientTiming() throws Exception {
+        store.entries = List.of(query("select 2", 7), query("select 1", 4));
 
         mockMvc.perform(get("/api/sql-logs")
-                        .cookie(new MockCookie("LASTUSER", "last-user"))
+                        .param("traceType", "query")
                         .param("uiId", "page01"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.uiId", is("page01")))
-                .andExpect(jsonPath("$.logs", hasSize(1)))
-                .andExpect(jsonPath("$.logs[0].requestId", is(REQUEST_ID)))
-                .andExpect(jsonPath("$.logs[0].uiId", is("page01")))
-                .andExpect(jsonPath("$.logs[0].sql", is("select 1")))
-                .andExpect(jsonPath("$.logs[0].sqlElapsedMillis").value(4))
-                .andExpect(jsonPath("$.logs[0].clientApiElapsedMillis").value(35.2))
-                .andExpect(jsonPath("$.logs[0].clientTotalElapsedMillis").value(48.7));
+                .andExpect(jsonPath("$.logs", hasSize(2)))
+                .andExpect(jsonPath("$.logs[0].apiStartedAt",
+                        is("2026-07-01T10:30:15.1+09:00")))
+                .andExpect(jsonPath("$.logs[0].sql", is("select 2")))
+                .andExpect(jsonPath("$.logs[0].sqlElapsedMillis").value(7))
+                .andExpect(jsonPath("$.logs[0].serverTimeMillis").value(500))
+                .andExpect(jsonPath("$.logs[0].clientTimeMillis").value(300))
+                .andExpect(jsonPath("$.logs[0].totalTimeMillis").value(1000))
+                .andExpect(jsonPath("$.logs[0].requestId").doesNotExist());
 
-        assertThat(store.lastFindUsername).isEqualTo("last-user");
-        assertThat(store.lastFindPageId).isEqualTo("page01");
+        assertThat(store.lastFindTraceType).isEqualTo(SqlTraceType.QUERY);
+        assertThat(store.lastFindUserId).isEqualTo("user1");
     }
 
     @Test
-    void rejectsUnauthenticatedListRequest() throws Exception {
+    void updatesEverySqlObjectMatchingApiStartedAt() throws Exception {
+        store.clientTimingUpdateCount = 2;
+
+        mockMvc.perform(post("/api/sql-logs/timing")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "traceType": "query",
+                                  "apiStartedAt": "2026-07-01T10:30:15.100+09:00",
+                                  "uiId": "page01",
+                                  "clientTimeMillis": 300,
+                                  "totalTimeMillis": 1000
+                                }
+                                """))
+                .andExpect(status().isNoContent());
+
+        assertThat(store.lastTimingTraceType).isEqualTo(SqlTraceType.QUERY);
+        assertThat(store.lastTimingUserId).isEqualTo("user1");
+        assertThat(store.lastTimingUiId).isEqualTo("page01");
+        assertThat(store.lastApiStartedAt).isEqualTo(API_STARTED_AT);
+        assertThat(store.lastClientTimeMillis).isEqualTo(300);
+        assertThat(store.lastTotalTimeMillis).isEqualTo(1000);
+    }
+
+    @Test
+    void returnsNotFoundWhenNoSqlMatchesApiStartedAt() throws Exception {
+        mockMvc.perform(post("/api/sql-logs/timing")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "traceType": "query",
+                                  "apiStartedAt": "2026-07-01T10:30:15.100+09:00",
+                                  "uiId": "page01",
+                                  "clientTimeMillis": 300,
+                                  "totalTimeMillis": 1000
+                                }
+                                """))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void rejectsInvalidStartedAtOrTimingValues() throws Exception {
+        mockMvc.perform(post("/api/sql-logs/timing")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "traceType": "query",
+                                  "apiStartedAt": "invalid",
+                                  "uiId": "page01",
+                                  "clientTimeMillis": 300,
+                                  "totalTimeMillis": 1000
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/sql-logs/timing")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "traceType": "query",
+                                  "apiStartedAt": "2026-07-01T10:30:15.100+09:00",
+                                  "uiId": "page01",
+                                  "clientTimeMillis": 1100,
+                                  "totalTimeMillis": 1000
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void rejectsInvalidTraceTypeOrUiId() throws Exception {
+        mockMvc.perform(get("/api/sql-logs")
+                        .param("traceType", "unknown")
+                        .param("uiId", "page01"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/sql-logs")
+                        .param("traceType", "query")
+                        .param("uiId", "page:01"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void clearDeletesCurrentUsersTypedScreenList() throws Exception {
+        mockMvc.perform(delete("/api/sql-logs")
+                        .param("traceType", "query")
+                        .param("uiId", "page01"))
+                .andExpect(status().isNoContent());
+
+        assertThat(store.deletedTraceType).isEqualTo(SqlTraceType.QUERY);
+        assertThat(store.deletedUserId).isEqualTo("user1");
+        assertThat(store.deletedUiId).isEqualTo("page01");
+    }
+
+    @Test
+    void rejectsUnauthenticatedRequest() throws Exception {
         SecurityContextHolder.clearContext();
 
-        mockMvc.perform(get("/api/sql-logs").param("uiId", "page01"))
+        mockMvc.perform(get("/api/sql-logs")
+                        .param("traceType", "query")
+                        .param("uiId", "page01"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
-    void fallsBackToAuthenticatedUsernameWithoutLastUserCookie() throws Exception {
-        store.entries = List.of(query());
-
-        mockMvc.perform(get("/api/sql-logs").param("uiId", "page01"))
-                .andExpect(status().isOk());
-
-        assertThat(store.lastFindUsername).isEqualTo("user1");
-    }
-
-    @Test
-    void appendsTimingOnlyForOwnedQuery() throws Exception {
-        store.queryExists = true;
-
-        mockMvc.perform(post("/api/sql-logs/timing")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new SqlTraceTimingRequest(
-                                REQUEST_ID,
-                                "page01",
-                                35.2,
-                                48.7))))
-                .andExpect(status().isNoContent());
-
-        assertThat(store.appended).singleElement().satisfies(entry -> {
-            assertThat(entry.eventType()).isEqualTo(SqlTraceEventType.TIMING);
-            assertThat(entry.username()).isEqualTo("user1");
-            assertThat(entry.requestId()).isEqualTo(REQUEST_ID);
-        });
-    }
-
-    @Test
-    void rejectsTimingForAnotherUsersQuery() throws Exception {
-        store.queryExists = false;
-
-        mockMvc.perform(post("/api/sql-logs/timing")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new SqlTraceTimingRequest(
-                                REQUEST_ID,
-                                "page01",
-                                35.2,
-                                48.7))))
-                .andExpect(status().isNotFound());
-
-        assertThat(store.appended).isEmpty();
-    }
-
-    @Test
-    void rejectsMissingOrInconsistentTimingValues() throws Exception {
-        mockMvc.perform(post("/api/sql-logs/timing")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "requestId": "%s",
-                                  "uiId": "page01",
-                                  "clientTotalElapsedMillis": 48.7
-                                }
-                                """.formatted(REQUEST_ID)))
-                .andExpect(status().isBadRequest());
-
-        mockMvc.perform(post("/api/sql-logs/timing")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "requestId": "%s",
-                                  "uiId": "page01",
-                                  "clientApiElapsedMillis": 50.0,
-                                  "clientTotalElapsedMillis": 40.0
-                                }
-                                """.formatted(REQUEST_ID)))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void rejectsNonFiniteTimingValues() throws Exception {
-        mockMvc.perform(post("/api/sql-logs/timing")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "requestId": "%s",
-                                  "uiId": "page01",
-                                  "clientApiElapsedMillis": "NaN",
-                                  "clientTotalElapsedMillis": 48.7
-                                }
-                                """.formatted(REQUEST_ID)))
-                .andExpect(status().isBadRequest());
-
-        mockMvc.perform(post("/api/sql-logs/timing")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "requestId": "%s",
-                                  "uiId": "page01",
-                                  "clientApiElapsedMillis": 35.2,
-                                  "clientTotalElapsedMillis": "Infinity"
-                                }
-                                """.formatted(REQUEST_ID)))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void clearDeletesUserScopedLogs() throws Exception {
-        mockMvc.perform(delete("/api/sql-logs").param("uiId", "page01"))
-                .andExpect(status().isNoContent());
-
-        assertThat(store.deletedUsername).isEqualTo("user1");
-        assertThat(store.deletedPageId).isEqualTo("page01");
-        assertThat(store.appended).isEmpty();
-    }
-
-    @Test
-    void returnsServerErrorWhenFileReadFails() throws Exception {
+    void returnsServerErrorWhenRedisReadFails() throws Exception {
         store.failure = new IOException("read failed");
 
-        mockMvc.perform(get("/api/sql-logs").param("uiId", "page01"))
+        mockMvc.perform(get("/api/sql-logs")
+                        .param("traceType", "query")
+                        .param("uiId", "page01"))
                 .andExpect(status().isInternalServerError());
     }
 
-    private SqlTraceEntry query() {
+    private SqlTraceEntry query(String sql, long sqlElapsedMillis) {
         return new SqlTraceEntry(
-                SqlTraceEventType.QUERY,
+                SqlTraceType.QUERY,
                 "user1",
-                REQUEST_ID,
+                API_STARTED_AT,
                 "page01",
-                NOW,
-                4L,
-                "select 1",
-                35.2,
-                48.7);
+                EXECUTED_AT,
+                sqlElapsedMillis,
+                500L,
+                300.0,
+                1000.0,
+                sql);
     }
 
     private static class StubStore implements SqlTraceStore {
 
         private List<SqlTraceEntry> entries = List.of();
-        private final List<SqlTraceEntry> appended = new ArrayList<>();
         private IOException failure;
-        private boolean queryExists;
-        private String lastFindUsername;
-        private String lastFindPageId;
-        private String deletedUsername;
-        private String deletedPageId;
+        private long clientTimingUpdateCount;
+        private SqlTraceType lastFindTraceType;
+        private String lastFindUserId;
+        private SqlTraceType lastTimingTraceType;
+        private String lastTimingUserId;
+        private String lastTimingUiId;
+        private OffsetDateTime lastApiStartedAt;
+        private double lastClientTimeMillis;
+        private double lastTotalTimeMillis;
+        private SqlTraceType deletedTraceType;
+        private String deletedUserId;
+        private String deletedUiId;
 
         @Override
-        public void append(SqlTraceEntry entry) throws IOException {
-            if (failure != null) {
-                throw failure;
-            }
-            appended.add(entry);
+        public void append(SqlTraceEntry entry) {
         }
 
         @Override
-        public List<SqlTraceEntry> find(String username, String pageId) throws IOException {
-            if (failure != null) {
-                throw failure;
-            }
-            lastFindUsername = username;
-            lastFindPageId = pageId;
+        public List<SqlTraceEntry> find(
+                SqlTraceType traceType,
+                String userId,
+                String uiId) throws IOException {
+            throwIfFailed();
+            lastFindTraceType = traceType;
+            lastFindUserId = userId;
             return entries;
         }
 
         @Override
-        public boolean appendTimingIfOwned(SqlTraceEntry timing) throws IOException {
-            if (failure != null) {
-                throw failure;
-            }
-            if (!queryExists) {
-                return false;
-            }
-            appended.add(timing);
-            return true;
+        public long updateServerTiming(
+                SqlTraceType traceType,
+                String userId,
+                String uiId,
+                OffsetDateTime apiStartedAt,
+                long serverTimeMillis) {
+            return 0;
         }
 
         @Override
-        public void delete(String username, String pageId) throws IOException {
+        public long updateClientTiming(
+                SqlTraceType traceType,
+                String userId,
+                String uiId,
+                OffsetDateTime apiStartedAt,
+                double clientTimeMillis,
+                double totalTimeMillis) throws IOException {
+            throwIfFailed();
+            lastTimingTraceType = traceType;
+            lastTimingUserId = userId;
+            lastTimingUiId = uiId;
+            lastApiStartedAt = apiStartedAt;
+            lastClientTimeMillis = clientTimeMillis;
+            lastTotalTimeMillis = totalTimeMillis;
+            return clientTimingUpdateCount;
+        }
+
+        @Override
+        public void delete(SqlTraceType traceType, String userId, String uiId)
+                throws IOException {
+            throwIfFailed();
+            deletedTraceType = traceType;
+            deletedUserId = userId;
+            deletedUiId = uiId;
+        }
+
+        private void throwIfFailed() throws IOException {
             if (failure != null) {
                 throw failure;
             }
-            deletedUsername = username;
-            deletedPageId = pageId;
         }
     }
 }

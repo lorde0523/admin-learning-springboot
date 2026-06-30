@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.example.admin.sqltrace.context.SqlCaptureContext;
 import com.example.admin.sqltrace.context.SqlCaptureContextHolder;
+import com.example.admin.sqltrace.context.SqlTraceType;
 import com.example.admin.sqltrace.storage.SqlTraceEntry;
 import com.example.admin.sqltrace.storage.SqlTraceStore;
 import java.sql.Connection;
@@ -12,6 +13,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import javax.sql.DataSource;
@@ -43,7 +45,12 @@ class SqlTraceJdbcProxyTests {
             statement.execute("insert into test_menu (id, name) values (1, 'Admin')");
         }
 
-        SqlCaptureContextHolder.set(new SqlCaptureContext("user1", "request-1", "page01", false));
+        SqlCaptureContextHolder.set(new SqlCaptureContext(
+                SqlTraceType.QUERY,
+                "user1",
+                OffsetDateTime.parse("2026-07-01T10:30:15.100+09:00"),
+                "page01",
+                false));
     }
 
     @AfterEach
@@ -166,17 +173,36 @@ class SqlTraceJdbcProxyTests {
         }
 
         @Override
-        public List<SqlTraceEntry> find(String username, String pageId) {
+        public List<SqlTraceEntry> find(
+                SqlTraceType traceType,
+                String username,
+                String pageId) {
             return List.copyOf(entries);
         }
 
         @Override
-        public boolean appendTimingIfOwned(SqlTraceEntry timing) {
-            return false;
+        public long updateServerTiming(
+                SqlTraceType traceType,
+                String userId,
+                String uiId,
+                OffsetDateTime apiStartedAt,
+                long serverTimeMillis) {
+            return 0;
         }
 
         @Override
-        public void delete(String username, String pageId) {
+        public long updateClientTiming(
+                SqlTraceType traceType,
+                String userId,
+                String uiId,
+                OffsetDateTime apiStartedAt,
+                double clientTimeMillis,
+                double totalTimeMillis) {
+            return 0;
+        }
+
+        @Override
+        public void delete(SqlTraceType traceType, String username, String pageId) {
         }
     }
 
