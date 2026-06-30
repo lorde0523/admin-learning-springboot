@@ -1,57 +1,70 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createAdminApi } from './adminApi';
+const { httpClient } = vi.hoisted(() => ({
+  httpClient: {
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+  },
+}));
 
-const createClient = () => ({
-  get: vi.fn().mockResolvedValue({ data: { content: [] } }),
-  post: vi.fn().mockResolvedValue({ data: { id: 1 } }),
-  put: vi.fn().mockResolvedValue({ data: { id: 1 } }),
-  delete: vi.fn().mockResolvedValue({ data: undefined }),
-});
+vi.mock('./httpClient', () => ({ httpClient }));
 
-describe('createAdminApi', () => {
-  it('keeps user transport details behind domain functions', async () => {
-    const client = createClient();
-    const api = createAdminApi(client);
+import {
+  assignUserRoles,
+  clearSqlLogs,
+  getSqlLogs,
+  searchMenus,
+  searchUsers,
+} from './adminApi';
 
-    await api.users.search('adm');
-    await api.users.assignRoles(7, [1, 3]);
+describe('adminApi', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-    expect(client.get).toHaveBeenCalledWith('/api/jpa/users', {
+  it('calls user APIs with async functions and returns response data', async () => {
+    httpClient.get.mockResolvedValue({ data: { content: [{ id: 7 }] } });
+    httpClient.put.mockResolvedValue({ data: { id: 7 } });
+
+    await expect(searchUsers('adm')).resolves.toEqual({ content: [{ id: 7 }] });
+    await expect(assignUserRoles(7, [1, 3])).resolves.toEqual({ id: 7 });
+
+    expect(httpClient.get).toHaveBeenCalledWith('/api/jpa/users', {
       params: { loginKeyword: 'adm' },
     });
-    expect(client.put).toHaveBeenCalledWith('/api/jpa/users/7/roles', {
+    expect(httpClient.put).toHaveBeenCalledWith('/api/jpa/users/7/roles', {
       roleIds: [1, 3],
     });
   });
 
   it('uses identical page parameters for JPA and MyBatis menu searches', async () => {
-    const client = createClient();
-    const api = createAdminApi(client);
+    httpClient.get.mockResolvedValue({ data: { content: [] } });
     const criteria = { nameKeyword: 'admin', page: 2, size: 20, sort: 'sortOrder,asc' };
 
-    await api.menus.searchPage('jpa', criteria);
-    await api.menus.searchPage('mybatis', criteria);
+    await searchMenus('jpa', criteria);
+    await searchMenus('mybatis', criteria);
 
-    expect(client.get).toHaveBeenNthCalledWith(1, '/api/jpa/menus/page', {
+    expect(httpClient.get).toHaveBeenNthCalledWith(1, '/api/jpa/menus/page', {
       params: criteria,
     });
-    expect(client.get).toHaveBeenNthCalledWith(2, '/api/mybatis/menus/page', {
+    expect(httpClient.get).toHaveBeenNthCalledWith(2, '/api/mybatis/menus/page', {
       params: criteria,
     });
   });
 
   it('identifies SQL log resources by trace type and UI ID', async () => {
-    const client = createClient();
-    const api = createAdminApi(client);
+    httpClient.get.mockResolvedValue({ data: [] });
+    httpClient.delete.mockResolvedValue({ data: undefined });
 
-    await api.sqlLogs.list('users-workbench');
-    await api.sqlLogs.clear('users-workbench');
+    await getSqlLogs('users-workbench');
+    await clearSqlLogs('users-workbench');
 
-    expect(client.get).toHaveBeenCalledWith('/api/sql-logs', {
+    expect(httpClient.get).toHaveBeenCalledWith('/api/sql-logs', {
       params: { traceType: 'query', uiId: 'users-workbench' },
     });
-    expect(client.delete).toHaveBeenCalledWith('/api/sql-logs', {
+    expect(httpClient.delete).toHaveBeenCalledWith('/api/sql-logs', {
       params: { traceType: 'query', uiId: 'users-workbench' },
     });
   });

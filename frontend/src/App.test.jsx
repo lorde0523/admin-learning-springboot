@@ -5,19 +5,23 @@ import { describe, expect, it, vi } from 'vitest';
 import App from './App';
 
 vi.mock('./api/adminApi', () => ({
-  adminApi: {
-    auth: { me: vi.fn().mockResolvedValue({ authenticated: false, principal: null }) },
-    users: { search: vi.fn().mockResolvedValue([]) },
-    roles: { list: vi.fn().mockResolvedValue([]) },
-    menus: {
-      list: vi.fn().mockResolvedValue([]),
-      searchPage: vi.fn().mockResolvedValue({ content: [], totalPages: 0, last: true }),
-    },
-    sqlLogs: {
-      list: vi.fn().mockResolvedValue({ logs: [] }),
-      clear: vi.fn().mockResolvedValue(undefined),
-    },
-  },
+  getCurrentUser: vi.fn().mockResolvedValue({ authenticated: false, principal: null }),
+  searchUsers: vi.fn().mockResolvedValue([]),
+  createUser: vi.fn(),
+  updateUser: vi.fn(),
+  deleteUser: vi.fn(),
+  assignUserRoles: vi.fn(),
+  getRoles: vi.fn().mockResolvedValue([]),
+  createRole: vi.fn(),
+  updateRole: vi.fn(),
+  deleteRole: vi.fn(),
+  getRoleMenus: vi.fn().mockResolvedValue([]),
+  assignRoleMenus: vi.fn(),
+  getMenus: vi.fn().mockResolvedValue([]),
+  searchMenus: vi.fn().mockResolvedValue({ content: [], totalPages: 0, last: true }),
+  saveMenuGrid: vi.fn(),
+  getSqlLogs: vi.fn().mockResolvedValue({ logs: [] }),
+  clearSqlLogs: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe('App', () => {

@@ -1,53 +1,111 @@
 import { httpClient } from './httpClient';
 
-const data = (response) => response.data;
+export const getCurrentUser = async () => {
+  const response = await httpClient.get('/api/auth/me');
+  return response.data;
+};
 
-/**
- * Builds framework-agnostic domain functions around an Axios-compatible client.
- * React Query consumes this object, while components never import it directly.
- */
-export const createAdminApi = (client) => ({
-  auth: {
-    me: () => client.get('/api/auth/me').then(data),
-  },
-  users: {
-    search: (loginKeyword = '') =>
-      client.get('/api/jpa/users', { params: { loginKeyword } }).then(data),
-    find: (id) => client.get(`/api/jpa/users/${id}`).then(data),
-    create: (request) => client.post('/api/jpa/users', request).then(data),
-    update: (id, request) => client.put(`/api/jpa/users/${id}`, request).then(data),
-    remove: (id) => client.delete(`/api/jpa/users/${id}`).then(data),
-    assignRoles: (id, roleIds) =>
-      client.put(`/api/jpa/users/${id}/roles`, { roleIds }).then(data),
-  },
-  roles: {
-    list: () => client.get('/api/jpa/roles').then(data),
-    find: (id) => client.get(`/api/jpa/roles/${id}`).then(data),
-    create: (request) => client.post('/api/jpa/roles', request).then(data),
-    update: (id, request) => client.put(`/api/jpa/roles/${id}`, request).then(data),
-    remove: (id) => client.delete(`/api/jpa/roles/${id}`).then(data),
-    menus: (id) => client.get(`/api/jpa/roles/${id}/menus`).then(data),
-    assignMenus: (id, menuIds) =>
-      client.put(`/api/jpa/roles/${id}/menus`, { menuIds }).then(data),
-  },
-  menus: {
-    list: (nameKeyword = '') =>
-      client.get('/api/jpa/menus', { params: { nameKeyword } }).then(data),
-    searchPage: (implementation, criteria) =>
-      client
-        .get(`/api/${implementation}/menus/page`, { params: criteria })
-        .then(data),
-    saveGrid: (changeSet) =>
-      client.post('/api/jpa/menus/grid-save', changeSet).then(data),
-  },
-  sqlLogs: {
-    list: (uiId) =>
-      client.get('/api/sql-logs', { params: { traceType: 'query', uiId } }).then(data),
-    clear: (uiId) =>
-      client.delete('/api/sql-logs', { params: { traceType: 'query', uiId } }).then(data),
-    saveTiming: (request) =>
-      client.post('/api/sql-logs/timing', request).then(data),
-  },
-});
+export const searchUsers = async (loginKeyword = '') => {
+  const response = await httpClient.get('/api/jpa/users', {
+    params: { loginKeyword },
+  });
+  return response.data;
+};
 
-export const adminApi = createAdminApi(httpClient);
+export const getUser = async (id) => {
+  const response = await httpClient.get(`/api/jpa/users/${id}`);
+  return response.data;
+};
+
+export const createUser = async (request) => {
+  const response = await httpClient.post('/api/jpa/users', request);
+  return response.data;
+};
+
+export const updateUser = async (id, request) => {
+  const response = await httpClient.put(`/api/jpa/users/${id}`, request);
+  return response.data;
+};
+
+export const deleteUser = async (id) => {
+  const response = await httpClient.delete(`/api/jpa/users/${id}`);
+  return response.data;
+};
+
+export const assignUserRoles = async (id, roleIds) => {
+  const response = await httpClient.put(`/api/jpa/users/${id}/roles`, { roleIds });
+  return response.data;
+};
+
+export const getRoles = async () => {
+  const response = await httpClient.get('/api/jpa/roles');
+  return response.data;
+};
+
+export const getRole = async (id) => {
+  const response = await httpClient.get(`/api/jpa/roles/${id}`);
+  return response.data;
+};
+
+export const createRole = async (request) => {
+  const response = await httpClient.post('/api/jpa/roles', request);
+  return response.data;
+};
+
+export const updateRole = async (id, request) => {
+  const response = await httpClient.put(`/api/jpa/roles/${id}`, request);
+  return response.data;
+};
+
+export const deleteRole = async (id) => {
+  const response = await httpClient.delete(`/api/jpa/roles/${id}`);
+  return response.data;
+};
+
+export const getRoleMenus = async (id) => {
+  const response = await httpClient.get(`/api/jpa/roles/${id}/menus`);
+  return response.data;
+};
+
+export const assignRoleMenus = async (id, menuIds) => {
+  const response = await httpClient.put(`/api/jpa/roles/${id}/menus`, { menuIds });
+  return response.data;
+};
+
+export const getMenus = async (nameKeyword = '') => {
+  const response = await httpClient.get('/api/jpa/menus', {
+    params: { nameKeyword },
+  });
+  return response.data;
+};
+
+export const searchMenus = async (implementation, criteria) => {
+  const response = await httpClient.get(`/api/${implementation}/menus/page`, {
+    params: criteria,
+  });
+  return response.data;
+};
+
+export const saveMenuGrid = async (changeSet) => {
+  const response = await httpClient.post('/api/jpa/menus/grid-save', changeSet);
+  return response.data;
+};
+
+export const getSqlLogs = async (uiId) => {
+  const response = await httpClient.get('/api/sql-logs', {
+    params: { traceType: 'query', uiId },
+  });
+  return response.data;
+};
+
+export const clearSqlLogs = async (uiId) => {
+  const response = await httpClient.delete('/api/sql-logs', {
+    params: { traceType: 'query', uiId },
+  });
+  return response.data;
+};
+
+export const saveSqlLogTiming = async (request) => {
+  const response = await httpClient.post('/api/sql-logs/timing', request);
+  return response.data;
+};

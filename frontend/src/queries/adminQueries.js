@@ -1,6 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { adminApi } from '../api/adminApi';
+import {
+  assignRoleMenus,
+  assignUserRoles,
+  clearSqlLogs,
+  createRole,
+  createUser,
+  deleteRole,
+  deleteUser,
+  getCurrentUser,
+  getMenus,
+  getRoleMenus,
+  getRoles,
+  getSqlLogs,
+  saveMenuGrid,
+  searchMenus,
+  searchUsers,
+  updateRole,
+  updateUser,
+} from '../api/adminApi';
 
 export const queryKeys = {
   auth: ['auth', 'me'],
@@ -20,66 +38,66 @@ const useInvalidatingMutation = (mutationFn, keys) => {
 };
 
 export const useAuth = () =>
-  useQuery({ queryKey: queryKeys.auth, queryFn: adminApi.auth.me, retry: false });
+  useQuery({ queryKey: queryKeys.auth, queryFn: getCurrentUser, retry: false });
 
 export const useUsers = (keyword) =>
-  useQuery({ queryKey: queryKeys.users(keyword), queryFn: () => adminApi.users.search(keyword) });
+  useQuery({ queryKey: queryKeys.users(keyword), queryFn: () => searchUsers(keyword) });
 
 export const useUserMutations = () => ({
-  create: useInvalidatingMutation(adminApi.users.create, [['users']]),
+  create: useInvalidatingMutation(createUser, [['users']]),
   update: useInvalidatingMutation(
-    ({ id, request }) => adminApi.users.update(id, request),
+    ({ id, request }) => updateUser(id, request),
     [['users']],
   ),
-  remove: useInvalidatingMutation(adminApi.users.remove, [['users']]),
+  remove: useInvalidatingMutation(deleteUser, [['users']]),
   assignRoles: useInvalidatingMutation(
-    ({ id, roleIds }) => adminApi.users.assignRoles(id, roleIds),
+    ({ id, roleIds }) => assignUserRoles(id, roleIds),
     [['users']],
   ),
 });
 
 export const useRoles = () =>
-  useQuery({ queryKey: queryKeys.roles, queryFn: adminApi.roles.list });
+  useQuery({ queryKey: queryKeys.roles, queryFn: getRoles });
 
 export const useRoleMenus = (roleId) =>
   useQuery({
     queryKey: ['roles', roleId, 'menus'],
-    queryFn: () => adminApi.roles.menus(roleId),
+    queryFn: () => getRoleMenus(roleId),
     enabled: Boolean(roleId),
   });
 
 export const useRoleMutations = () => ({
-  create: useInvalidatingMutation(adminApi.roles.create, [queryKeys.roles]),
+  create: useInvalidatingMutation(createRole, [queryKeys.roles]),
   update: useInvalidatingMutation(
-    ({ id, request }) => adminApi.roles.update(id, request),
+    ({ id, request }) => updateRole(id, request),
     [queryKeys.roles],
   ),
-  remove: useInvalidatingMutation(adminApi.roles.remove, [queryKeys.roles]),
+  remove: useInvalidatingMutation(deleteRole, [queryKeys.roles]),
   assignMenus: useInvalidatingMutation(
-    ({ id, menuIds }) => adminApi.roles.assignMenus(id, menuIds),
+    ({ id, menuIds }) => assignRoleMenus(id, menuIds),
     [queryKeys.roles],
   ),
 });
 
 export const useMenuOptions = () =>
-  useQuery({ queryKey: queryKeys.menuOptions, queryFn: () => adminApi.menus.list('') });
+  useQuery({ queryKey: queryKeys.menuOptions, queryFn: () => getMenus('') });
 
 export const useMenus = (implementation, criteria) =>
   useQuery({
     queryKey: queryKeys.menus(implementation, criteria),
-    queryFn: () => adminApi.menus.searchPage(implementation, criteria),
+    queryFn: () => searchMenus(implementation, criteria),
   });
 
 export const useSaveMenuGrid = () =>
-  useInvalidatingMutation(adminApi.menus.saveGrid, [['menus']]);
+  useInvalidatingMutation(saveMenuGrid, [['menus']]);
 
 export const useSqlLogs = (uiId, enabled) =>
   useQuery({
     queryKey: queryKeys.sqlLogs(uiId),
-    queryFn: () => adminApi.sqlLogs.list(uiId),
+    queryFn: () => getSqlLogs(uiId),
     enabled,
     retry: false,
   });
 
 export const useClearSqlLogs = (uiId) =>
-  useInvalidatingMutation(() => adminApi.sqlLogs.clear(uiId), [queryKeys.sqlLogs(uiId)]);
+  useInvalidatingMutation(() => clearSqlLogs(uiId), [queryKeys.sqlLogs(uiId)]);
