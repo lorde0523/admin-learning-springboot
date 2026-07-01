@@ -12,11 +12,6 @@ export const searchUsers = async (loginKeyword = '') => {
   return response.data;
 };
 
-export const getUser = async (id) => {
-  const response = await httpClient.get(`/api/jpa/users/${id}`);
-  return response.data;
-};
-
 export const createUser = async (request) => {
   const response = await httpClient.post('/api/jpa/users', request);
   return response.data;
@@ -39,11 +34,6 @@ export const assignUserRoles = async (id, roleIds) => {
 
 export const getRoles = async () => {
   const response = await httpClient.get('/api/jpa/roles');
-  return response.data;
-};
-
-export const getRole = async (id) => {
-  const response = await httpClient.get(`/api/jpa/roles/${id}`);
   return response.data;
 };
 
@@ -102,10 +92,5 @@ export const clearSqlLogs = async (uiId) => {
   const response = await httpClient.delete('/api/sql-logs', {
     params: { traceType: 'query', uiId },
   });
-  return response.data;
-};
-
-export const saveSqlLogTiming = async (request) => {
-  const response = await httpClient.post('/api/sql-logs/timing', request);
   return response.data;
 };

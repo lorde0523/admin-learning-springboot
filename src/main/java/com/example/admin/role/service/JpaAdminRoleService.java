@@ -62,7 +62,11 @@ public class JpaAdminRoleService {
     }
 
     public Set<MenuResponse> menus(Long id) {
-        return roleWithMenus(id).getMenus().stream()
+        return menuResponses(roleWithMenus(id));
+    }
+
+    private Set<MenuResponse> menuResponses(AdminRole role) {
+        return role.getMenus().stream()
                 .map(MenuResponse::from)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
@@ -70,7 +74,7 @@ public class JpaAdminRoleService {
     private RoleDtos.RoleMenusResponse menusResponse(AdminRole role) {
         return RoleDtos.RoleMenusResponse.builder()
                 .roleId(role.getId())
-                .menus(menus(role.getId()))
+                .menus(menuResponses(role))
                 .build();
     }
 

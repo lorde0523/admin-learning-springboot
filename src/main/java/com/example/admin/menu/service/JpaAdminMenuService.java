@@ -70,35 +70,25 @@ public class JpaAdminMenuService {
                 MenuGridRow::getId,
                 Function.identity());
 
-        GridSaveResult result = GridSaveResult.empty();
-
-        if (hasRows(request.getDeletedIds())) {
-            result = result.merge(gridSaveExecutor.delete(
-                    request.getDeletedIds(),
-                    menuRepository,
-                    Function.identity(),
-                    AdminMenu::getId,
-                    "존재하지 않는 메뉴가 포함되어 있습니다."));
-        }
-
-        if (hasRows(request.getCreatedRows())) {
-            result = result.merge(gridSaveExecutor.create(
-                    request.getCreatedRows(),
-                    menuRepository,
-                    MenuGridRow::getId,
-                    AdminMenu::getId,
-                    menuMapper::toEntity));
-        }
-
-        if (hasRows(request.getUpdatedRows())) {
-            result = result.merge(gridSaveExecutor.update(
-                    request.getUpdatedRows(),
-                    menuRepository,
-                    MenuGridRow::getId,
-                    AdminMenu::getId,
-                    menuMapper::updateEntity,
-                    "존재하지 않는 메뉴가 포함되어 있습니다."));
-        }
+        GridSaveResult result = gridSaveExecutor.delete(
+                request.getDeletedIds(),
+                menuRepository,
+                Function.identity(),
+                AdminMenu::getId,
+                "존재하지 않는 메뉴가 포함되어 있습니다.")
+                .merge(gridSaveExecutor.create(
+                        request.getCreatedRows(),
+                        menuRepository,
+                        MenuGridRow::getId,
+                        AdminMenu::getId,
+                        menuMapper::toEntity))
+                .merge(gridSaveExecutor.update(
+                        request.getUpdatedRows(),
+                        menuRepository,
+                        MenuGridRow::getId,
+                        AdminMenu::getId,
+                        menuMapper::updateEntity,
+                        "존재하지 않는 메뉴가 포함되어 있습니다."));
 
         return MenuGridSaveResponse.builder()
                 .createdCount(result.getCreatedCount())
@@ -111,10 +101,6 @@ public class JpaAdminMenuService {
     private AdminMenu menu(Long id) {
         return menuRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("메뉴를 찾을 수 없습니다. id=" + id));
-    }
-
-    private boolean hasRows(List<?> rows) {
-        return rows != null && !rows.isEmpty();
     }
 }
 
