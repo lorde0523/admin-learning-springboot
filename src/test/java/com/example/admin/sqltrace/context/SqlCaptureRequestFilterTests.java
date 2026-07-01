@@ -69,7 +69,7 @@ class SqlCaptureRequestFilterTests {
 
         assertThat(observed.get().traceType()).isEqualTo(SqlTraceType.QUERY);
         assertThat(observed.get().uiId()).isEqualTo("page01");
-        assertThat(observed.get().userId()).isEqualTo("user1");
+        assertThat(observed.get().userId()).isEqualTo("attribute-user");
         assertThat(observed.get().apiStartedAt()).isEqualTo(API_STARTED_AT);
         assertThat(observed.get().sqlCapturePaused()).isFalse();
         assertThat(response.getHeader("X-Api-Started-At"))
@@ -85,6 +85,7 @@ class SqlCaptureRequestFilterTests {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/jpa/menus/page");
         request.addHeader("X-Trace-Type", "query");
         request.addHeader("X-Ui-Id", " page01 ");
+        request.setAttribute("USER_ID", "attribute-user");
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicReference<SqlCaptureContext> observed = new AtomicReference<>();
 
@@ -96,7 +97,7 @@ class SqlCaptureRequestFilterTests {
     }
 
     @Test
-    void fallsBackToRequestAttributeWithoutAuthenticatedLoginUser() throws Exception {
+    void usesRequestAttributeWithoutAuthenticatedLoginUser() throws Exception {
         SecurityContextHolder.clearContext();
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/jpa/menus/page");
         request.addHeader("X-Trace-Type", "query");
@@ -124,8 +125,7 @@ class SqlCaptureRequestFilterTests {
     }
 
     @Test
-    void doesNotCreateContextWithoutAuthenticatedLoginUser() throws Exception {
-        SecurityContextHolder.clearContext();
+    void doesNotCreateContextWithoutUserIdAttribute() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/jpa/menus/page");
         request.addHeader("X-Trace-Type", "query");
         request.addHeader("X-Ui-Id", "page01");
@@ -143,6 +143,7 @@ class SqlCaptureRequestFilterTests {
         request.addHeader("X-Trace-Type", "query");
         request.addHeader("X-Ui-Id", "page01");
         request.addHeader("X-Sql-Capture-Paused", "invalid");
+        request.setAttribute("USER_ID", "attribute-user");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilter(request, response, new MockFilterChain());
@@ -156,6 +157,7 @@ class SqlCaptureRequestFilterTests {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/jpa/menus/page");
         request.addHeader("X-Trace-Type", "query");
         request.addHeader("X-Ui-Id", "page01");
+        request.setAttribute("USER_ID", "attribute-user");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         try {

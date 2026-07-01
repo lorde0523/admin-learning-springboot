@@ -211,6 +211,7 @@ class SqlTraceIntegrationTests {
 
         MvcResult business = mockMvc.perform(get("/api/mybatis/menus/page")
                         .session(session)
+                        .requestAttr("USER_ID", "session-user")
                         .header("X-Trace-Type", "query")
                         .header("X-Ui-Id", "page01")
                         .header("X-Sql-Capture-Paused", "false")
@@ -224,6 +225,7 @@ class SqlTraceIntegrationTests {
         String apiStartedAt = business.getResponse().getHeader("X-Api-Started-At");
         mockMvc.perform(post("/api/sql-logs/timing")
                         .session(session)
+                        .requestAttr("USER_ID", "session-user")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -238,6 +240,7 @@ class SqlTraceIntegrationTests {
 
         mockMvc.perform(get("/api/sql-logs")
                         .session(session)
+                        .requestAttr("USER_ID", "session-user")
                         .param("traceType", "query")
                         .param("uiId", "page01"))
                 .andExpect(status().isOk())
@@ -246,11 +249,13 @@ class SqlTraceIntegrationTests {
 
         mockMvc.perform(delete("/api/sql-logs")
                         .session(session)
+                        .requestAttr("USER_ID", "session-user")
                         .param("traceType", "query")
                         .param("uiId", "page01"))
                 .andExpect(status().isNoContent());
         mockMvc.perform(get("/api/sql-logs")
                         .session(session)
+                        .requestAttr("USER_ID", "session-user")
                         .param("traceType", "query")
                         .param("uiId", "page01"))
                 .andExpect(status().isOk())
@@ -309,10 +314,16 @@ class SqlTraceIntegrationTests {
 
     private RequestPostProcessor login(String username) {
         LoginUser loginUser = LoginUser.sessionUser(username, username, List.of());
-        return authentication(UsernamePasswordAuthenticationToken.authenticated(
+        RequestPostProcessor authentication = authentication(
+                UsernamePasswordAuthenticationToken.authenticated(
                 loginUser,
                 "",
                 loginUser.getAuthorities()));
+        return request -> {
+            authentication.postProcessRequest(request);
+            request.setAttribute("USER_ID", username);
+            return request;
+        };
     }
 
     @TestConfiguration

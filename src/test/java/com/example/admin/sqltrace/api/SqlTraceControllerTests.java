@@ -62,6 +62,7 @@ class SqlTraceControllerTests {
         store.entries = List.of(query("select 2", 7), query("select 1", 4));
 
         mockMvc.perform(get("/api/sql-logs")
+                        .requestAttr("USER_ID", "user1")
                         .param("traceType", "query")
                         .param("uiId", "page01"))
                 .andExpect(status().isOk())
@@ -85,6 +86,7 @@ class SqlTraceControllerTests {
         store.clientTimingUpdateCount = 2;
 
         mockMvc.perform(post("/api/sql-logs/timing")
+                        .requestAttr("USER_ID", "user1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -108,6 +110,7 @@ class SqlTraceControllerTests {
     @Test
     void returnsNotFoundWhenNoSqlMatchesApiStartedAt() throws Exception {
         mockMvc.perform(post("/api/sql-logs/timing")
+                        .requestAttr("USER_ID", "user1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -124,6 +127,7 @@ class SqlTraceControllerTests {
     @Test
     void rejectsInvalidStartedAtOrTimingValues() throws Exception {
         mockMvc.perform(post("/api/sql-logs/timing")
+                        .requestAttr("USER_ID", "user1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -137,6 +141,7 @@ class SqlTraceControllerTests {
                 .andExpect(status().isBadRequest());
 
         mockMvc.perform(post("/api/sql-logs/timing")
+                        .requestAttr("USER_ID", "user1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -153,10 +158,12 @@ class SqlTraceControllerTests {
     @Test
     void rejectsInvalidTraceTypeOrUiId() throws Exception {
         mockMvc.perform(get("/api/sql-logs")
+                        .requestAttr("USER_ID", "user1")
                         .param("traceType", "unknown")
                         .param("uiId", "page01"))
                 .andExpect(status().isBadRequest());
         mockMvc.perform(get("/api/sql-logs")
+                        .requestAttr("USER_ID", "user1")
                         .param("traceType", "query")
                         .param("uiId", "page:01"))
                 .andExpect(status().isBadRequest());
@@ -165,6 +172,7 @@ class SqlTraceControllerTests {
     @Test
     void clearDeletesCurrentUsersTypedScreenList() throws Exception {
         mockMvc.perform(delete("/api/sql-logs")
+                        .requestAttr("USER_ID", "user1")
                         .param("traceType", "query")
                         .param("uiId", "page01"))
                 .andExpect(status().isNoContent());
@@ -175,7 +183,7 @@ class SqlTraceControllerTests {
     }
 
     @Test
-    void rejectsUnauthenticatedRequest() throws Exception {
+    void rejectsRequestWithoutUserIdAttribute() throws Exception {
         SecurityContextHolder.clearContext();
 
         mockMvc.perform(get("/api/sql-logs")
@@ -189,6 +197,7 @@ class SqlTraceControllerTests {
         store.failure = new IOException("read failed");
 
         mockMvc.perform(get("/api/sql-logs")
+                        .requestAttr("USER_ID", "user1")
                         .param("traceType", "query")
                         .param("uiId", "page01"))
                 .andExpect(status().isInternalServerError());
