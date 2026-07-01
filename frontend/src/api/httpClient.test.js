@@ -11,6 +11,18 @@ const echoAdapter = async (config) => ({
 });
 
 describe('createHttpClient', () => {
+  it('prefers the active tab UI ID over the pathname registry', async () => {
+    const client = createHttpClient({
+      getPathname: () => '/users',
+      getActiveTab: () => ({ uiId: 'role-popup-instance' }),
+      adapter: echoAdapter,
+    });
+
+    const response = await client.get('/api/jpa/roles');
+
+    expect(response.config.headers.get('X-Ui-Id')).toBe('role-popup-instance');
+  });
+
   it('adds the current route UI ID to every GET request', async () => {
     const client = createHttpClient({
       getPathname: () => '/users',

@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 import { getUiId } from '../routes/uiIdRegistry';
+import { useTabStore } from '../stores/useTabStore';
 import { publishResponse } from './requestInspectorStore';
 
 const isSqlLogRequest = (url = '') => url.startsWith('/api/sql-logs');
@@ -21,6 +22,7 @@ const sendTiming = (request) =>
  */
 export const createHttpClient = ({
   getPathname = () => window.location.pathname,
+  getActiveTab = () => useTabStore.getState().getActiveTab(),
   adapter,
   onResponse = publishResponse,
   onTiming = sendTiming,
@@ -39,8 +41,10 @@ export const createHttpClient = ({
       return config;
     }
 
+    const uiId = getActiveTab()?.uiId ?? getUiId(getPathname());
+    config.traceUiId = uiId;
     config.headers.set('X-Trace-Type', TRACE_TYPE);
-    config.headers.set('X-Ui-Id', getUiId(getPathname()));
+    config.headers.set('X-Ui-Id', uiId);
 
     if (isSqlLogRequest(config.url)) {
       config.headers.set('X-Sql-Capture-Paused', 'true');
@@ -74,7 +78,7 @@ export const createHttpClient = ({
           onTiming({
             traceType: TRACE_TYPE,
             apiStartedAt,
-            uiId: getUiId(getPathname()),
+            uiId: response.config.traceUiId,
             clientTimeMillis: Math.max(0, totalTimeMillis - elapsedMillis),
             totalTimeMillis,
           });
